@@ -29,7 +29,7 @@ debug=0
 ;
 ; default value: [not set]
 ;
-;tracefile=/var/log/misdn.trace
+;tracefile=/var/log/asterisk/misdn.log
 
 
 ; set to yes if you want mISDN_dsp to bridge the calls in HW
@@ -233,6 +233,7 @@ incoming_early_audio=no
 ; Pickup and Callgroup
 ;
 ; deafult values: not set = 0
+; range: 0-63
 ;
 ;callgroup=1
 ;pickupgroup=1
