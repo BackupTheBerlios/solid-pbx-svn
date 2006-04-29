@@ -180,6 +180,10 @@ static struct io_context *io;
 /** Protect the interface list (oh323_pvt) */
 AST_MUTEX_DEFINE_STATIC(iflock);
 
+/** Usage counter and associated lock */
+static int usecnt = 0;
+AST_MUTEX_DEFINE_STATIC(usecnt_lock);
+
 /* Protect the monitoring thread, so only one process can kill or start it, and not
    when it's doing something critical. */
 AST_MUTEX_DEFINE_STATIC(monlock);
@@ -530,8 +534,13 @@ static int oh323_hangup(struct ast_channel *c)
 	pvt->needdestroy = 1;
 
 	/* Update usage counter */
+	ast_mutex_lock(&usecnt_lock);
+	usecnt--;
+	if (usecnt < 0) {
+		ast_log(LOG_WARNING, "Usecnt < 0\n");
+	}
+	ast_mutex_unlock(&usecnt_lock);
 	ast_mutex_unlock(&pvt->lock);
-	ast_atomic_fetchadd_int(&__mod_desc->usecnt, -1);
 	ast_update_use_count();
 	return 0;
 }
@@ -725,7 +734,9 @@ static struct ast_channel *__oh323_new(struct oh323_pvt *pvt, int state, const c
 	ast_mutex_unlock(&pvt->lock);
 	ch = ast_channel_alloc(1);
 	/* Update usage counter */
-	ast_atomic_fetchadd_int(&__mod_desc->usecnt, +1);
+	ast_mutex_lock(&usecnt_lock);
+	usecnt++;
+	ast_mutex_unlock(&usecnt_lock);
 	ast_update_use_count();
 	ast_mutex_lock(&pvt->lock);
 	if (ch) {
@@ -2226,7 +2237,7 @@ static int h323_do_reload(void)
 	return 0;
 }
 
-static int reload(void *mod)
+int reload(void)
 {
 	return h323_reload(0, 0, NULL);
 }
@@ -2306,7 +2317,7 @@ static struct ast_rtp_protocol oh323_rtp = {
 	.set_rtp_peer=  oh323_set_rtp_peer,
 };
 
-static int load_module(void *mod)
+int load_module()
 {
 	int res;
 	ast_mutex_init(&userl.lock);
@@ -2374,7 +2385,7 @@ static int load_module(void *mod)
 	return res;
 }
 
-static int unload_module(void *mod)
+int unload_module() 
 {
 	struct oh323_pvt *p, *pl;
 
@@ -2448,14 +2459,18 @@ static int unload_module(void *mod)
 	return 0; 
 } 
 
-static const char *description(void)
+int usecount()
 {
-	return desc;
+	return usecnt;
 }
 
-static const char *key(void)
+const char *description()
+{
+	return (char *) desc;
+}
+
+const char *key()
 {
 	return ASTERISK_GPL_KEY;
 }
 
-STD_MOD(MOD_1, reload, NULL, NULL);

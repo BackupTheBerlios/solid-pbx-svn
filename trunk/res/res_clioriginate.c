@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 2005 - 2006, Digium, Inc.
+ * Copyright (C) 2005, Digium, Inc.
  *
  * Russell Bryant <russell@digium.com>
  *
@@ -18,7 +18,6 @@
 
 /*! 
  * \file
- * \author Russell Bryant <russell@digium.com>
  *
  * \brief Originate calls via the CLI
  * 
@@ -67,7 +66,7 @@ static char *complete_orig(const char *line, const char *word, int pos, int stat
 
 struct ast_cli_entry cli_orig = { { "originate", NULL }, handle_orig, "Originate a call", orig_help, complete_orig };
 
-static int orig_app(int fd, const char *chan, const char *app, const char *appdata)
+static int orig_app(const char *chan, const char *app, const char *appdata)
 {
 	char *chantech;
 	char *chandata;
@@ -76,12 +75,14 @@ static int orig_app(int fd, const char *chan, const char *app, const char *appda
 	if (ast_strlen_zero(app))
 		return RESULT_SHOWUSAGE;
 
-	if (!(chandata = ast_strdupa(chan)))
+	chandata = ast_strdupa(chan);
+	if (!chandata) {
+		ast_log(LOG_ERROR, "Out of Memory!\n");
 		return RESULT_FAILURE;
-	
+	}
 	chantech = strsep(&chandata, "/");
 	if (!chandata) {
-		ast_cli(fd, "*** No data provided after channel type! ***\n");
+		ast_log(LOG_ERROR, "No dial string.\n");
 		return RESULT_SHOWUSAGE;
 	}
 
@@ -90,7 +91,7 @@ static int orig_app(int fd, const char *chan, const char *app, const char *appda
 	return RESULT_SUCCESS;
 }
 
-static int orig_exten(int fd, const char *chan, const char *data)
+static int orig_exten(const char *chan, const char *data)
 {
 	char *chantech;
 	char *chandata;
@@ -98,18 +99,19 @@ static int orig_exten(int fd, const char *chan, const char *data)
 	char *context = NULL;
 	int reason = 0;
 
-	if (!(chandata = ast_strdupa(chan)))
-		return RESULT_FAILURE;
-	
-	chantech = strsep(&chandata, "/");
+	chandata = ast_strdupa(chan);
 	if (!chandata) {
-		ast_cli(fd, "*** No data provided after channel type! ***\n");
-		return RESULT_SHOWUSAGE;
+		ast_log(LOG_ERROR, "Out of Memory!\n");
+		return RESULT_FAILURE;
 	}
+	chantech = strsep(&chandata, "/");
 
 	if (!ast_strlen_zero(data)) {
-		if (!(context = ast_strdupa(data)))
+		context = ast_strdupa(data);
+		if (!context) {
+			ast_log(LOG_ERROR, "Out of Memory!\n");
 			return RESULT_FAILURE;
+		}
 		exten = strsep(&context, "@");
 	}
 
@@ -133,9 +135,9 @@ static int handle_orig(int fd, int argc, char *argv[])
 	ast_atomic_fetchadd_int(&me->usecnt, +1);
 
 	if (!strcasecmp("application", argv[2])) {
-		res = orig_app(fd, argv[1], argv[3], argv[4]);	
+		res = orig_app(argv[1], argv[3], argv[4]);	
 	} else if (!strcasecmp("extension", argv[2])) {
-		res = orig_exten(fd, argv[1], argv[3]);
+		res = orig_exten(argv[1], argv[3]);
 	} else
 		res = RESULT_SHOWUSAGE;
 

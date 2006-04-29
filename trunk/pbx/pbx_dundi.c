@@ -559,8 +559,10 @@ static int dundi_lookup_local(struct dundi_result *dr, struct dundi_mapping *map
 				newvariable = ast_var_assign("IPADDR", ipaddr);
 				AST_LIST_INSERT_HEAD(&headp, newvariable, entries);
 				pbx_substitute_variables_varshead(&headp, map->dest, dr[anscnt].dest, sizeof(dr[anscnt].dest));
-				while ((newvariable = AST_LIST_REMOVE_HEAD(&headp, entries)))
+				while (!AST_LIST_EMPTY(&headp)) {           /* List Deletion. */
+					newvariable = AST_LIST_REMOVE_HEAD(&headp, entries);
 					ast_var_delete(newvariable);
+				}
 			} else
 				dr[anscnt].dest[0] = '\0';
 			anscnt++;
