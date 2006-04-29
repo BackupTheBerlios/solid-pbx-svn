@@ -1,7 +1,11 @@
-The Asterisk Open Source PBX
-by Mark Spencer <markster@digium.com>
+The Solid PBX Soft Switch Class 5
+by the Solid PBX community
+
+Our thanks to:
+Mark Spencer <markster@digium.com>
 and the Asterisk.org developer community
 
+Copyright (C) 2006 The Solid PBX project
 Copyright (C) 2001-2006 Digium, Inc.
 and other copyright holders.
 ================================================================
@@ -9,18 +13,18 @@ and other copyright holders.
 * SECURITY
   It is imperative that you read and fully understand the contents of
 the security information file (doc/security.txt) before you attempt 
-to configure and run an Asterisk server.
+to configure and run a Solid PBX server.
 
-* WHAT IS ASTERISK ?
-  Asterisk is an Open Source PBX and telephony toolkit.  It is, in a
+* WHAT IS SOLID PBX ?
+  Solid PBX is an Open Source PBX and telephony toolkit.  It is, in a
 sense, middleware between Internet and telephony channels on the bottom,
 and Internet and telephony applications at the top.  For more information
-on the project itself, please visit the Asterisk home page at:
+on the project itself, please visit the Solid PBX home page at:
 
-           http://www.asterisk.org
+           http://solid-pbx.berlios.de
 
-In addition you'll find lots of information compiled by the Asterisk
-community on this Wiki:
+In addition you'll find lots of information compiled by the community on
+this Wiki:
 
            http://www.voip-info.org/wiki-Asterisk
 
@@ -32,19 +36,19 @@ web site.
 * SUPPORTED OPERATING SYSTEMS
 
 == Linux ==
-  The Asterisk Open Source PBX is developed and tested primarily on the
+  The Solid Open Source PBX is developed and tested primarily on the
 GNU/Linux operating system, and is supported on every major GNU/Linux
 distribution.
 
 == Others ==
-  Asterisk has also been 'ported' and reportedly runs properly on other
+  Solid PBX has also been 'ported' and reportedly runs properly on other
 operating systems as well, including Sun Solaris, Apple's Mac OS X, and
 the BSD variants.
 
 * GETTING STARTED
 
   First, be sure you've got supported hardware (but note that you don't need
-ANY special hardware, not even a soundcard) to install and run Asterisk.
+ANY special hardware, not even a soundcard) to install and run Solid PBX.
 
   Supported telephony hardware includes:
 
@@ -68,8 +72,6 @@ made every effort possible to maintain backwards compatibility.
 
   In order to discover new features to use, please check the configuration
 examples in the /configs directory of the source code distribution. 
-To discover the major new features of Asterisk 1.2, please visit 
-http://edvina.net/asterisk1-2/
 
 * NEW INSTALLATIONS
 
