@@ -68,7 +68,7 @@ AC_SUBST([PBX_LIB$1])
 
 
 AC_DEFUN(
-[AST_CHECK_GNU_MAKE], [ AC_CACHE_CHECK( for GNU make, GNU_MAKE,
+[AST_CHECK_GNU_MAKE], [AC_CACHE_CHECK(for GNU make, GNU_MAKE,
    GNU_MAKE='Not Found' ;
    for a in make gmake gnumake ; do
       if test -z "$a" ; then continue ; fi ;
@@ -83,4 +83,4 @@ if test  "x$GNU_MAKE" = "xNot Found"  ; then
    exit 1
 fi
 AC_SUBST([GNU_MAKE])
-] )
+])

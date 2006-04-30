@@ -252,7 +252,7 @@ ifeq ($(OSARCH),SunOS)
   ID=/usr/xpg4/bin/id
 endif
 
-INCLUDE+=-Iinclude -I../include
+INCLUDE+=-Iinclude -I../include -I..
 ASTCFLAGS+=-pipe  -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations $(DEBUG) $(INCLUDE) #-DMAKE_VALGRIND_HAPPY
 ASTCFLAGS+=$(OPTIMIZE)
 
@@ -580,7 +580,7 @@ datafiles: all
 # improved a lot.  I'll put it here for now.
 	mkdir -p $(DESTDIR)$(ASTDATADIR)/static-http
 	for x in static-http/*; do \
-		install -m 644 $$x $(DESTDIR)$(ASTDATADIR)/static-http ; \
+		$(INSTALL) -m 644 $$x $(DESTDIR)$(ASTDATADIR)/static-http ; \
 	done
 	mkdir -p $(DESTDIR)$(ASTDATADIR)/sounds/digits
 	mkdir -p $(DESTDIR)$(ASTDATADIR)/sounds/priv-callerintros
