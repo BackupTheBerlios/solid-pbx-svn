@@ -196,8 +196,9 @@ ifneq ($(wildcard makeopts),)
 endif
 
 ASTCFLAGS+=$(MENUSELECT_CFLAGS)
-TOPDIR_CFLAGS=-include include/autoconfig.h
-MOD_SUBDIR_CFLAGS=-include ../include/autoconfig.h
+TOPDIR_CFLAGS=-include include/autoconfig.h -Iinclude
+MOD_SUBDIR_CFLAGS=-include ../include/autoconfig.h -I../include -I..
+OTHER_SUBDIR_CFLAGS=-include ../include/autoconfig.h -I../include -I..
 
 #   *CLI> show memory allocations [filename]
 #   *CLI> show memory summary [filename]
@@ -213,7 +214,6 @@ ifeq ($(OSARCH),Linux)
     # You must have GCC 3.4 to use k8, otherwise use athlon
     PROC=k8
     #PROC=athlon
-    OPTIONS+=-m64
   endif
 
   ifeq ($(PROC),sparc64)
@@ -234,9 +234,9 @@ ifeq ($(OSARCH),Linux)
       OPTIONS+=-fsigned-char -mcpu=ep9312
     else
       ifeq ($(SUB_PROC),xscale)
-        OPTIONS+=-fsigned-char -msoft-float -mcpu=xscale
+        OPTIONS+=-fsigned-char -mcpu=xscale
       else
-        OPTIONS+=-fsigned-char -msoft-float 
+        OPTIONS+=-fsigned-char 
       endif
     endif
   endif
@@ -252,7 +252,6 @@ ifeq ($(OSARCH),SunOS)
   ID=/usr/xpg4/bin/id
 endif
 
-INCLUDE+=-Iinclude -I../include -I..
 ASTCFLAGS+=-pipe  -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations $(DEBUG) $(INCLUDE) #-DMAKE_VALGRIND_HAPPY
 ASTCFLAGS+=$(OPTIMIZE)
 
@@ -465,10 +464,10 @@ all: TAGS
 endif
 
 editline/config.h:
-	cd editline && unset CFLAGS LIBS && ./configure ; \
+	cd editline && unset CFLAGS LIBS && CFLAGS="$(OPTIMIZE)" ./configure ; \
 
 editline/libedit.a:
-	cd editline && unset CFLAGS LIBS && test -f config.h || ./configure
+	cd editline && unset CFLAGS LIBS && test -f config.h || CFLAGS="$(OPTIMIZE)" ./configure
 	$(MAKE) -C editline libedit.a
 
 db1-ast/libdb1.a:
@@ -545,8 +544,8 @@ muted: muted.o
 
 subdirs: 
 	for x in $(MOD_SUBDIRS); do CFLAGS="$(ASTCFLAGS) $(MOD_SUBDIR_CFLAGS)" $(MAKE) -C $$x || exit 1 ; done
-	CFLAGS="$(ASTCFLAGS)" $(MAKE) -C utils
-	CFLAGS="$(ASTCFLAGS) -include ../include/autoconfig.h" $(MAKE) -C agi
+	CFLAGS="$(ASTCFLAGS) $(OTHER_SUBDIR_CFLAGS)" $(MAKE) -C utils
+	CFLAGS="$(ASTCFLAGS) $(OTHER_SUBDIR_CFLAGS)" $(MAKE) -C agi
 
 clean-depend:
 	for x in $(SUBDIRS); do $(MAKE) -C $$x clean-depend || exit 1 ; done

@@ -28,10 +28,6 @@
 #include "asterisk/utils.h"		/* ast_calloc() */
 #include "asterisk/ael_structs.h"
 
-/* create a new object with start-end marker */
-static pval *npval(pvaltype type, int first_line, int last_line,
-	int first_column, int last_column);
-
 static pval * linku1(pval *head, pval *tail);
 
 void reset_parencount(yyscan_t yyscanner);
@@ -51,8 +47,9 @@ static char *ael_token_subst(char *mess);
 
 
 %union {
-	char *str;
-	struct pval *pval;
+	int	intval;		/* integer value, typically flags */
+	char	*str;		/* strings */
+	struct pval *pval;	/* full objects */
 }
 
 %{
@@ -60,10 +57,20 @@ static char *ael_token_subst(char *mess);
 void yyerror(YYLTYPE *locp, struct parse_io *parseio, char const *s);
 int ael_yylex (YYSTYPE * yylval_param, YYLTYPE * yylloc_param , void * yyscanner);
 
+/* create a new object with start-end marker */
+static pval *npval(pvaltype type, int first_line, int last_line,
+	int first_column, int last_column);
+
 /* create a new object with start-end marker, simplified interface.
  * Must be declared here because YYLTYPE is not known before
  */
 static pval *npval2(pvaltype type, YYLTYPE *first, YYLTYPE *last);
+
+/* another frontend for npval, this time for a string */
+static pval *nword(char *string, YYLTYPE *pos);
+
+/* update end position of an object, return the object */
+static pval *update_last(pval *, YYLTYPE *);
 %}
 
 
@@ -113,6 +120,8 @@ static pval *npval2(pvaltype type, YYLTYPE *first, YYLTYPE *last);
 %type <pval>file
 /* XXX lr changes */
 %type <pval>opt_else
+%type <pval>elements_block
+%type <pval>switchlist_block
 
 %type <str>opt_word
 %type <str>word_or_default
@@ -121,6 +130,8 @@ static pval *npval2(pvaltype type, YYLTYPE *first, YYLTYPE *last);
 %type <str>word_list
 %type <str>word3_list
 %type <str>includedname
+
+%type <intval>opt_abstract
 
 /*
  * OPTIONS
@@ -156,6 +167,7 @@ static pval *npval2(pvaltype type, YYLTYPE *first, YYLTYPE *last);
 		ignorepat element elements arglist global_statement
 		global_statements globals macro context object objects
 		opt_else
+		elements_block switchlist_block
 
 %destructor { free($$);}  word word_list goto_word word3_list includedname opt_word word_or_default
 
@@ -190,40 +202,16 @@ word_or_default : word { $$ = $1; }
 	| KW_DEFAULT { $$ = strdup("default"); }
 	;
 
-context : KW_CONTEXT word_or_default LC elements RC {
-		$$ = npval2(PV_CONTEXT, &@1, &@5);
-		$$->u1.str = $2;
-		$$->u2.statements = $4; }
-	| KW_CONTEXT word_or_default LC RC /* empty context OK */ {
+context : opt_abstract KW_CONTEXT word_or_default elements_block {
 		$$ = npval2(PV_CONTEXT, &@1, &@4);
-		$$->u1.str = $2; }
-	| KW_ABSTRACT KW_CONTEXT word_or_default LC elements RC {
-		$$ = npval2(PV_CONTEXT, &@1, &@6);
 		$$->u1.str = $3;
-		$$->u2.statements = $5;
-		$$->u3.abstract = 1; }
-	| KW_ABSTRACT KW_CONTEXT word_or_default LC RC /* empty context OK */ {
-		$$ = npval2(PV_CONTEXT, &@1, &@5);
-		$$->u1.str = $3;
-		$$->u3.abstract = 1; }
-/*
-	| KW_CONTEXT KW_DEFAULT LC elements RC {
-		$$ = npval2(PV_CONTEXT, &@1, &@5);
-		$$->u1.str = strdup("default");
-		$$->u2.statements = $4; }
-	| KW_CONTEXT KW_DEFAULT LC RC {
-		$$ = npval2(PV_CONTEXT, &@1, &@4);
-		$$->u1.str = strdup("default"); }
-	| KW_ABSTRACT KW_CONTEXT KW_DEFAULT LC elements RC  {
-		$$ = npval2(PV_CONTEXT, &@1, &@6);
-		$$->u1.str = strdup("default");
-		$$->u2.statements = $5;
-		$$->u3.abstract = 1; }
-	| KW_ABSTRACT KW_CONTEXT KW_DEFAULT LC RC {
-		$$ = npval2(PV_CONTEXT, &@1, &@5);
-		$$->u1.str = strdup("default");
-		$$->u3.abstract = 1; }
-*/
+		$$->u2.statements = $4;
+		$$->u3.abstract = $1; }
+	;
+
+/* optional "abstract" keyword */
+opt_abstract: KW_ABSTRACT { $$ = 1; }
+	| /* nothing */ { $$ = 0; }
 	;
 
 macro : KW_MACRO word LP arglist RP LC macro_statements RC {
@@ -259,14 +247,16 @@ global_statement : word EQ { reset_semicount(parseio->scanner); }  word SEMI {
 		$$->u2.val = $4; }
 	;
 
-arglist : word {
-		$$= npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1; }
+arglist : word { $$= nword($1, &@1); }
 	| arglist COMMA word {
 		pval *z = npval2(PV_WORD, &@1, &@3);
 		z->u1.str = $3;
 		$$ = linku1($1,z); }
 	| arglist error {$$=$1;}
+	;
+
+elements_block : LC RC	{ $$ = NULL; }
+	| LC elements RC { $$ = $2; }
 	;
 
 elements : element { $$=$1;}
@@ -343,24 +333,17 @@ iftime_head : KW_IFTIME LP word3_list COLON word3_list COLON word3_list
 		free($3);
 		free($5);
 		free($7);
-		$$->u1.list->next = npval2(PV_WORD, &@9, &@9);
-		$$->u1.list->next->u1.str = $9;
-		$$->u1.list->next->next = npval2(PV_WORD, &@11, &@11);
-		$$->u1.list->next->next->u1.str = $11;
-		$$->u1.list->next->next->next = npval2(PV_WORD, &@13, &@13);
-		$$->u1.list->next->next->next->u1.str = $13;
+		$$->u1.list->next = nword($9, &@9);
+		$$->u1.list->next->next = nword($11, &@11);
+		$$->u1.list->next->next->next = nword($13, &@13);
 		prev_word = 0;
 	}
 	| KW_IFTIME LP word BAR word3_list BAR word3_list BAR word3_list RP {
 		$$ = npval2(PV_IFTIME, &@1, &@5); /* XXX @5 or greater ? */
-		$$->u1.list = npval2(PV_WORD, &@3, &@3);
-		$$->u1.list->u1.str = $3;
-		$$->u1.list->next = npval2(PV_WORD, &@5, &@5);
-		$$->u1.list->next->u1.str = $5;
-		$$->u1.list->next->next = npval2(PV_WORD, &@7, &@7);
-		$$->u1.list->next->next->u1.str = $7;
-		$$->u1.list->next->next->next = npval2(PV_WORD, &@9, &@9);
-		$$->u1.list->next->next->next->u1.str = $9;
+		$$->u1.list = nword($3, &@3);
+		$$->u1.list->next = nword($5, &@5);
+		$$->u1.list->next->next = nword($7, &@7);
+		$$->u1.list->next->next->next = nword($9, &@9);
 		prev_word = 0;
 	}
 
@@ -441,22 +424,14 @@ statement : LC statements RC {
 		$$->u1.str = $4;
 		$$->u2.statements = $6; }
 	| switch_head RC /* empty list OK */ {
-		$$=$1;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;}
+		$$ = update_last($1, &@2); }
 	| switch_head case_statements RC {
-		$$=$1;
-		$$->u2.statements = $2;
-		$$->endline = @3.last_line;
-		$$->endcol = @3.last_column;}
+		$$ = update_last($1, &@3);
+		$$->u2.statements = $2;}
 	| AMPER macro_call SEMI {
-		$$ = $2;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;}
+		$$ = update_last($2, &@2); }
 	| application_call SEMI {
-		$$ = $1;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;}
+		$$ = update_last($1, &@2); }
 	| word SEMI {
 		$$= npval2(PV_APPLICATION_CALL, &@1, &@2);
 		$$->u1.str = $1;}
@@ -497,47 +472,17 @@ statement : LC statements RC {
 	| KW_RETURN SEMI { $$ = npval2(PV_RETURN, &@1, &@2); }
 	| KW_CONTINUE SEMI { $$ = npval2(PV_CONTINUE, &@1, &@2); }
 	| random_head statement opt_else {
-		$$=$1;
+		$$ = update_last($1, &@2); /* XXX probably @3... */
 		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->u3.else_statements = $3;
-		$$->endcol = @2.last_column;}
-/*
-	| random_head statement KW_ELSE statement {
-		$$=$1;
-		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;
-		$$->u3.else_statements = $4;}
-*/
+		$$->u3.else_statements = $3;}
 	| if_head statement opt_else {
-		$$=$1;
+		$$ = update_last($1, &@2); /* XXX probably @3... */
 		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->u3.else_statements = $3;
-		$$->endcol = @2.last_column;}
-/*
-	| if_head statement KW_ELSE statement {
-		$$=$1;
-		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;
-	$$->u3.else_statements = $4;}
-*/
+		$$->u3.else_statements = $3;}
 	| iftime_head statement opt_else {
-		$$=$1;
+		$$ = update_last($1, &@2); /* XXX probably @3... */
 		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->u3.else_statements = $3;
-		$$->endcol = @2.last_column;}
-/*
-	| iftime_head statement KW_ELSE statement {
-		$$=$1;
-		$$->u2.statements = $2;
-		$$->endline = @2.last_line;
-		$$->endcol = @2.last_column;
-		$$->u3.else_statements = $4;}
-*/
+		$$->u3.else_statements = $3;}
 	| SEMI { $$=0; }
 	;
 
@@ -547,61 +492,41 @@ opt_else : KW_ELSE statement { $$ = $2; }
 /* XXX unused */
 bar_or_comma: BAR | COMMA ;
 
-target : goto_word { $$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;}
+target : goto_word { $$ = nword($1, &@1); }
 	| goto_word BAR goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;}
+		$$ = nword($1, &@1);
+		$$->next = nword($3, &@3); }
 	| goto_word COMMA goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;}
+		$$ = nword($1, &@1);
+		$$->next = nword($3, &@3); }
 	| goto_word BAR goto_word BAR goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;
-		$$->next->next = npval2(PV_WORD, &@5, &@5);
-		$$->next->next->u1.str = $5; }
+		$$ = nword($1, &@1);
+		$$->next = nword($3, &@3);
+		$$->next->next = nword($5, &@5); }
 	| goto_word COMMA goto_word COMMA goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;
-		$$->next->next = npval2(PV_WORD, &@5, &@5);
-		$$->next->next->u1.str = $5; }
+		$$ = nword($1, &@1);
+		$$->next = nword($3, &@3);
+		$$->next->next = nword($5, &@5); }
 	| KW_DEFAULT BAR goto_word BAR goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = strdup("default");
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;
-		$$->next->next = npval2(PV_WORD, &@5, &@5);
-		$$->next->next->u1.str = $5; }
+		$$ = nword(strdup("default"), &@1);
+		$$->next = nword($3, &@3);
+		$$->next->next = nword($5, &@5); }
 	| KW_DEFAULT COMMA goto_word COMMA goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = strdup("default");
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;
-		$$->next->next = npval2(PV_WORD, &@5, &@5);
-		$$->next->next->u1.str = $5; }
+		$$ = nword(strdup("default"), &@1);
+		$$->next = nword($3, &@3);
+		$$->next->next = nword($5, &@5); }
 	;
 
+/* XXX please document the form of jumptarget */
 jumptarget : goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@1, &@1); /* XXX not really @1 */
-		$$->next->u1.str = strdup("1");}  /*  jump extension[,priority][@context] */
+		$$ = nword($1, &@1);
+		$$->next = nword(strdup("1"), &@1); }  /*  jump extension[,priority][@context] */
 	| goto_word COMMA goto_word {
-		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;
-		$$->next = npval2(PV_WORD, &@3, &@3);
-		$$->next->u1.str = $3;}
+		$$ = nword($1, &@1);
+		$$->next = nword($3, &@3); }
 	| goto_word COMMA word AT word {
 		$$ = npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $5;
+		$$->u1.str = $5;	/* XXX must check this */
 		$$->next = npval2(PV_WORD, &@3, &@3);
 		$$->next->u1.str = $1;
 		$$->next->next = npval2(PV_WORD, &@5, &@5);
@@ -649,37 +574,28 @@ application_call_head: word {reset_argcount(parseio->scanner);} LP  {
 		$$->u1.str = $1; }
 	;
 
-application_call : application_call_head eval_arglist RP {$$ = $1;
+application_call : application_call_head eval_arglist RP {
+		$$ = update_last($1, &@3);
  		if( $$->type == PV_GOTO )
 			$$->u1.list = $2;
 	 	else
 			$$->u2.arglist = $2;
- 		$$->endline = @3.last_line; $$->endcol = @3.last_column;}
-	| application_call_head RP {$$=$1;$$->endline = @2.last_line; $$->endcol = @2.last_column;}
+	}
+	| application_call_head RP { $$ = update_last($1, &@2); }
 	;
 
 opt_word : word { $$ = $1 }
 	| { $$ = strdup(""); }
 	;
 
-eval_arglist :  word_list { 
-		$$= npval2(PV_WORD, &@1, &@1);
-		$$->u1.str = $1;}
+eval_arglist :  word_list { $$ = nword($1, &@1); }
 	| /*nothing! */   {
 		$$= npval(PV_WORD,0/*@1.first_line*/,0/*@1.last_line*/,0/* @1.first_column*/, 0/*@1.last_column*/);
 		$$->u1.str = strdup(""); }
 	| eval_arglist COMMA  opt_word {
-		pval *z = npval2(PV_WORD, &@3, &@3);
+		pval *z = nword($3, &@3);
 		$$ = $1;
-		linku1($1,z);
-		z->u1.str = $3;}
-/*
-	| eval_arglist COMMA {
-		pval *z = npval2(PV_WORD, &@2, &@2);
-		$$ = $1;
-		linku1($1,z);
-		z->u1.str = strdup("");}
-*/
+		linku1($1,z); }
 	;
 
 case_statements: case_statement {$$=$1;}
@@ -724,18 +640,18 @@ macro_statement : statement {$$=$1;}
 		$$->u2.statements = $4;}
 	;
 
-switches : KW_SWITCHES LC switchlist RC {
-		$$ = npval2(PV_SWITCHES, &@1, &@4);
-		$$->u1.list = $3; }
-	| KW_SWITCHES LC RC /* empty switch list OK */ {
-		$$ = npval2(PV_SWITCHES, &@1, &@3); }
+switches : KW_SWITCHES switchlist_block {
+		$$ = npval2(PV_SWITCHES, &@1, &@2);
+		$$->u1.list = $2; }
 	;
 
-eswitches : KW_ESWITCHES LC switchlist RC {
-		$$ = npval2(PV_ESWITCHES, &@1, &@4);
-		$$->u1.list = $3; }
-	| KW_ESWITCHES LC  RC { /* empty switch list OK */
-		$$ = npval2(PV_ESWITCHES, &@1, &@3); } /* if there's nothing to declare, why include it? */
+eswitches : KW_ESWITCHES switchlist_block {
+		$$ = npval2(PV_ESWITCHES, &@1, &@2);
+		$$->u1.list = $2; }
+	;
+
+switchlist_block : LC switchlist RC { $$ = $2; }
+	| LC RC { $$ = NULL; }
 	;
 
 switchlist : word SEMI {
@@ -761,25 +677,18 @@ includeslist : includedname SEMI {
 		free($3);
 		free($5);
 		free($7);
-		$$->u2.arglist->next = npval2(PV_WORD, &@9, &@9);
-		$$->u2.arglist->next->u1.str = $9;
-		$$->u2.arglist->next->next = npval2(PV_WORD, &@11, &@11);
-		$$->u2.arglist->next->next->u1.str = $11;
-		$$->u2.arglist->next->next->next = npval2(PV_WORD, &@13, &@13);
-		$$->u2.arglist->next->next->next->u1.str = $13;
+		$$->u2.arglist->next = nword($9, &@9);
+		$$->u2.arglist->next->next = nword($11, &@11);
+		$$->u2.arglist->next->next->next = nword($13, &@13);
 		prev_word=0;
 	}
 	| includedname BAR word BAR word3_list BAR word3_list BAR word3_list SEMI {
 		$$ = npval2(PV_WORD, &@1, &@2);
 		$$->u1.str = $1;
-		$$->u2.arglist = npval2(PV_WORD, &@3, &@3);
-		$$->u2.arglist->u1.str = $3;
-		$$->u2.arglist->next = npval2(PV_WORD, &@5, &@5);
-		$$->u2.arglist->next->u1.str = $5;
-		$$->u2.arglist->next->next = npval2(PV_WORD, &@7, &@7);
-		$$->u2.arglist->next->next->u1.str = $7;
-		$$->u2.arglist->next->next->next = npval2(PV_WORD, &@9, &@9);
-		$$->u2.arglist->next->next->next->u1.str = $9;
+		$$->u2.arglist = nword($3, &@3);
+		$$->u2.arglist->next = nword($5, &@5);
+		$$->u2.arglist->next->next = nword($7, &@7);
+		$$->u2.arglist->next->next->next = nword($9, &@9);
 		prev_word=0;
 	}
 	| includeslist includedname SEMI {
@@ -797,27 +706,21 @@ includeslist : includedname SEMI {
 		free($4);
 		free($6);
 		free($8);
-		z->u2.arglist->next = npval2(PV_WORD, &@10, &@10);
-		z->u2.arglist->next->u1.str = $10;
-		z->u2.arglist->next->next = npval2(PV_WORD, &@12, &@12);
-		z->u2.arglist->next->next->u1.str = $12;
-		z->u2.arglist->next->next->next = npval2(PV_WORD, &@14, &@14);
-		z->u2.arglist->next->next->next->u1.str = $14;
+		z->u2.arglist->next = nword($10, &@10);
+		z->u2.arglist->next->next = nword($12, &@12);
+		z->u2.arglist->next->next->next = nword($14, &@14);
 		prev_word=0;
 	}
 	| includeslist includedname BAR word BAR word3_list BAR word3_list BAR word3_list SEMI {
 		pval *z = npval2(PV_WORD, &@2, &@3);
 		$$=$1;
 		linku1($$,z);
-		$$->u2.arglist->u1.str = $4;
+		$$->u2.arglist->u1.str = $4;			/* XXX maybe too early ? */
 		z->u1.str = $2;
 		z->u2.arglist = npval2(PV_WORD, &@4, &@4);	/* XXX is this correct ? */
-		z->u2.arglist->next = npval2(PV_WORD, &@6, &@6);
-		z->u2.arglist->next->u1.str = $6;
-		z->u2.arglist->next->next = npval2(PV_WORD, &@8, &@8);
-		z->u2.arglist->next->next->u1.str = $8;
-		z->u2.arglist->next->next->next = npval2(PV_WORD, &@10, &@10);
-		z->u2.arglist->next->next->next->u1.str = $10;
+		z->u2.arglist->next = nword($6, &@6);
+		z->u2.arglist->next->next = nword($8, &@8);
+		z->u2.arglist->next->next->next = nword($10, &@10);
 		prev_word=0;
 	}
 	| includeslist error {$$=$1;}
@@ -991,6 +894,22 @@ static struct pval *npval2(pvaltype type, YYLTYPE *first, YYLTYPE *last)
 {
 	return npval(type, first->first_line, last->last_line,
 			first->first_column, last->last_column);
+}
+
+static struct pval *update_last(pval *obj, YYLTYPE *last)
+{
+	obj->endline = last->last_line;
+	obj->endcol = last->last_column;
+	return obj;
+}
+
+/* frontend for npval to create a PV_WORD string from the given token */
+static pval *nword(char *string, YYLTYPE *pos)
+{
+	pval *p = npval2(PV_WORD, pos, pos);
+	if (p)
+		p->u1.str = string;
+	return p;
 }
 
 /* append second element to the list in the first one */
