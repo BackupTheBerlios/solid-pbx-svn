@@ -1851,6 +1851,7 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 		if (!*to) {
 			if (option_verbose > 2)
 				ast_verbose( VERBOSE_PREFIX_3 "Nobody picked up in %d ms\n", orig);
+			ast_queue_log(qe->parent->name, qe->chan->uniqueid, on, "RINGNOANSWER", "%d", orig);
 			if (qe->parent->autopause) {
 				if (!set_member_paused(qe->parent->name, on, 1)) {
 					if (option_verbose > 2)
@@ -1959,6 +1960,7 @@ static int wait_our_turn(struct queue_ent *qe, int ringing, enum queue_result *r
 		/* leave the queue if no agents, if enabled */
 		if (qe->parent->leavewhenempty && (stat == QUEUE_NO_MEMBERS)) {
 			*reason = QUEUE_LEAVEEMPTY;
+			ast_queue_log(qe->parent->name, qe->chan->uniqueid, "NONE", "EXITEMPTY", "%d|%d|%ld", qe->pos, qe->opos, (long)time(NULL) - qe->start);
 			leave_queue(qe);
 			break;
 		}
@@ -1966,6 +1968,7 @@ static int wait_our_turn(struct queue_ent *qe, int ringing, enum queue_result *r
 		/* leave the queue if no reachable agents, if enabled */
 		if ((qe->parent->leavewhenempty == QUEUE_EMPTY_STRICT) && (stat == QUEUE_NO_REACHABLE_MEMBERS)) {
 			*reason = QUEUE_LEAVEUNAVAIL;
+			ast_queue_log(qe->parent->name, qe->chan->uniqueid, "NONE", "EXITEMPTY", "%d|%d|%ld", qe->pos, qe->opos, (long)time(NULL) - qe->start);
 			leave_queue(qe);
 			break;
 		}
@@ -2313,7 +2316,8 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 		bridge = ast_bridge_call(qe->chan,peer, &bridge_config);
 
 		if (strcasecmp(oldcontext, qe->chan->context) || strcasecmp(oldexten, qe->chan->exten)) {
-			ast_queue_log(queuename, qe->chan->uniqueid, peer->name, "TRANSFER", "%s|%s", qe->chan->exten, qe->chan->context);
+			ast_queue_log(queuename, qe->chan->uniqueid, peer->name, "TRANSFER", "%s|%s|%ld|%ld", 
+					  qe->chan->exten, qe->chan->context, (long)(callstart - qe->start), (long)(time(NULL) - callstart));
 		} else if (qe->chan->_softhangup) {
 			ast_queue_log(queuename, qe->chan->uniqueid, peer->name, "COMPLETECALLER", "%ld|%ld",
 				      (long)(callstart - qe->start), (long)(time(NULL) - callstart));
@@ -2997,7 +3001,7 @@ check_turns:
 			if (res < 0) {
 				/* Record this abandoned call */
 				record_abandoned(&qe);
-				 ast_queue_log(args.queuename, chan->uniqueid, "NONE", "ABANDON", "%d|%d|%ld", qe.pos, qe.opos, (long)time(NULL) - qe.start);
+				ast_queue_log(args.queuename, chan->uniqueid, "NONE", "ABANDON", "%d|%d|%ld", qe.pos, qe.opos, (long)time(NULL) - qe.start);
 				if (option_verbose > 2) {
 					ast_verbose(VERBOSE_PREFIX_3 "User disconnected from queue %s while waiting their turn\n", args.queuename);
 				}
