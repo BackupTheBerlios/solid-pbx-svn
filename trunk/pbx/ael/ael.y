@@ -117,8 +117,6 @@ static pval *update_last(pval *, YYLTYPE *);
 %type <pval>file
 /* XXX lr changes */
 %type <pval>opt_else
-%type <pval>elements_block
-%type <pval>switchlist_block
 %type <pval>timespec
 %type <pval>included_entry
 
@@ -130,6 +128,7 @@ static pval *update_last(pval *, YYLTYPE *);
 %type <str>word_list
 %type <str>word3_list
 %type <str>test_expr
+%type <str>opt_pri
 
 %type <intval>opt_abstract
 
@@ -167,12 +166,12 @@ static pval *update_last(pval *, YYLTYPE *);
 		ignorepat element elements arglist assignment
 		global_statements globals macro context object objects
 		opt_else
-		elements_block switchlist_block
 		timespec included_entry
 
 %destructor { free($$);}  word word_list goto_word word3_list opt_word context_name
 		timerange
 		test_expr
+		opt_pri
 
 
 %%
@@ -195,10 +194,10 @@ context_name : word { $$ = $1; }
 	| KW_DEFAULT { $$ = strdup("default"); }
 	;
 
-context : opt_abstract KW_CONTEXT context_name elements_block {
-		$$ = npval2(PV_CONTEXT, &@1, &@4);
+context : opt_abstract KW_CONTEXT context_name LC elements RC {
+		$$ = npval2(PV_CONTEXT, &@1, &@6);
 		$$->u1.str = $3;
-		$$->u2.statements = $4;
+		$$->u2.statements = $5;
 		$$->u3.abstract = $1; }
 	;
 
@@ -215,12 +214,10 @@ macro : KW_MACRO word LP arglist RP LC macro_statements RC {
 globals : KW_GLOBALS LC global_statements RC {
 		$$ = npval2(PV_GLOBALS, &@1, &@4);
 		$$->u1.statements = $3;}
-	| KW_GLOBALS LC RC { /* empty globals is OK */
-		$$ = npval2(PV_GLOBALS, &@1, &@3); }
 	;
 
-global_statements : assignment {$$=$1;}
-	| global_statements assignment {$$ = linku1($1, $2); }
+global_statements : { $$ = NULL; }
+	| assignment global_statements {$$ = linku1($1, $2); }
 	| global_statements error {$$=$1;}
 	;
 
@@ -230,19 +227,15 @@ assignment : word EQ { reset_semicount(parseio->scanner); }  word SEMI {
 		$$->u2.val = $4; }
 	;
 
+/* XXX this matches missing arguments, is this desired ? */
 arglist : /* empty */ { $$ = NULL; }
 	| word { $$ = nword($1, &@1); }
 	| arglist COMMA word { $$ = linku1($1, nword($3, &@3)); }
 	| arglist error {$$=$1;}
 	;
 
-elements_block : LC RC	{ $$ = NULL; }
-	| LC elements RC { $$ = $2; }
-	;
-
-elements : element { $$=$1;}
-	| error {$$=0;}
-	| elements element { $$ = linku1($1, $2); }
+elements : {$$=0;}
+	| element elements { $$ = linku1($1, $2); }
 	| elements error   { $$=$1;}
 	;
 
@@ -284,8 +277,9 @@ extension : word EXTENMARK statement {
 
 	;
 
-statements : statement {$$=$1;}
-	| statements statement { $$ = linku1($1, $2); }
+/* list of statements in a block or after a case label - can be empty */
+statements : /* empty */ { $$ = NULL; }
+	| statement statements { $$ = linku1($1, $2); }
 	| statements error {$$=$1;}
 	;
 
@@ -309,8 +303,7 @@ timespec : timerange BAR word3_list BAR word3_list BAR word3_list {
 	;
 
 /* expression used in if, random, while, switch */
-test_expr : LP { reset_parencount(parseio->scanner); }  word_list RP {
-		$$ = $3; }
+test_expr : LP { reset_parencount(parseio->scanner); }  word_list RP { $$ = $3; }
 	;
 
 /* 'if' like statements: if, iftime, random */
@@ -399,10 +392,8 @@ statement : LC statements RC {
 		$$->u1.str = $2;
 		$$->u2.statements = $3; }
 	| switch_statement { $$ = $1; }
-	| AMPER macro_call SEMI {
-		$$ = update_last($2, &@2); }
-	| application_call SEMI {
-		$$ = update_last($1, &@2); }
+	| AMPER macro_call SEMI { $$ = update_last($2, &@2); }
+	| application_call SEMI { $$ = update_last($1, &@2); }
 	| word SEMI {
 		$$= npval2(PV_APPLICATION_CALL, &@1, &@2);
 		$$->u1.str = $1;}
@@ -480,21 +471,18 @@ target : goto_word { $$ = nword($1, &@1); }
 		$$->next->next = nword($5, &@5); }
 	;
 
+opt_pri : /* empty */ { $$ = strdup("1"); }
+	| COMMA word { $$ = $2; }
+	;
+
 /* XXX please document the form of jumptarget */
-jumptarget : goto_word {			/* ext, 1 */
+jumptarget : goto_word opt_pri {			/* ext[, pri] default 1 */
 		$$ = nword($1, &@1);
-		$$->next = nword(strdup("1"), &@1); }  /*  jump extension[,priority][@context] */
-	| goto_word COMMA goto_word {		/* ext, pri */
-		$$ = nword($1, &@1);
-		$$->next = nword($3, &@3); }
-	| goto_word COMMA word AT context_name {	/* context, ext, pri */
-		$$ = nword($5, &@5);
+		$$->next = nword($2, &@2); }  /*  jump extension[,priority][@context] */
+	| goto_word opt_pri AT context_name {	/* context, ext, pri */
+		$$ = nword($4, &@4);
 		$$->next = nword($1, &@1);
-		$$->next->next = nword($3, &@3); }
-	| goto_word AT context_name {		/* context, ext, 1 */
-		$$ = nword($3, &@3);
-		$$->next = nword($1, &@1);
-		$$->next->next = nword(strdup("1"), &@3); }
+		$$->next->next = nword($2, &@2); }
 	;
 
 macro_call : word LP {reset_argcount(parseio->scanner);} eval_arglist RP {
@@ -543,8 +531,7 @@ eval_arglist :  word_list { $$ = nword($1, &@1); }
 	;
 
 case_statements: /* empty */ { $$ = NULL; }
-	| case_statement {$$=$1;}
-	| case_statements case_statement { $$ = linku1($1, $2); }
+	| case_statement case_statements { $$ = linku1($1, $2); }
 	;
 
 case_statement: KW_CASE word COLON statements {
@@ -559,20 +546,10 @@ case_statement: KW_CASE word COLON statements {
 		$$ = npval2(PV_PATTERN, &@1, &@4); /* XXX@3 or @4 ? */
 		$$->u1.str = $2;
 		$$->u2.statements = $4;}
-	| KW_CASE word COLON {
-		$$ = npval2(PV_CASE, &@1, &@3);
-		$$->u1.str = $2;}
-	| KW_DEFAULT COLON {
-		$$ = npval2(PV_DEFAULT, &@1, &@2);
-		$$->u1.str = NULL;}
-	| KW_PATTERN word COLON  {
-		$$ = npval2(PV_PATTERN, &@1, &@3);
-		$$->u1.str = $2;}
 	;
 
 macro_statements: /* empty */ { $$ = NULL; }
-	| macro_statement {$$ = $1;}
-	| macro_statements macro_statement { $$ = linku1($1, $2); }
+	| macro_statement macro_statements { $$ = linku1($1, $2); }
 	;
 
 macro_statement : statement {$$=$1;}
@@ -582,35 +559,31 @@ macro_statement : statement {$$=$1;}
 		$$->u2.statements = $4;}
 	;
 
-switches : KW_SWITCHES switchlist_block {
+switches : KW_SWITCHES LC switchlist RC {
 		$$ = npval2(PV_SWITCHES, &@1, &@2);
-		$$->u1.list = $2; }
+		$$->u1.list = $3; }
 	;
 
-eswitches : KW_ESWITCHES switchlist_block {
+eswitches : KW_ESWITCHES LC switchlist RC {
 		$$ = npval2(PV_ESWITCHES, &@1, &@2);
-		$$->u1.list = $2; }
+		$$->u1.list = $3; }
 	;
 
-switchlist_block : LC switchlist RC { $$ = $2; }
-	| LC RC { $$ = NULL; }
-	;
-
-switchlist : word SEMI { $$ = nword($1, &@1); }
-	| switchlist word SEMI { $$ = linku1($1, nword($2, &@2)); }
+switchlist : /* empty */ { $$ = NULL; }
+	| word SEMI switchlist { $$ = linku1(nword($1, &@1), $3); }
 	| switchlist error {$$=$1;}
 	;
 
-included_entry : context_name SEMI { $$ = nword($1, &@1); }
-	| context_name BAR timespec SEMI {
+included_entry : context_name { $$ = nword($1, &@1); }
+	| context_name BAR timespec {
 		$$ = nword($1, &@1);
 		$$->u2.arglist = $3;
 		prev_word=0; /* XXX sure ? */ }
 	;
 
 /* list of ';' separated context names followed by optional timespec */
-includeslist : included_entry { $$ = $1; }
-	| includeslist included_entry { $$ = linku1($1, $2); }
+includeslist : included_entry SEMI { $$ = $1; }
+	| includeslist included_entry SEMI { $$ = linku1($1, $2); }
 	| includeslist error {$$=$1;}
 	;
 
