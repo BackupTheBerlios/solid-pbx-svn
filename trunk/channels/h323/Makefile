@@ -6,9 +6,8 @@
 
 # Verify those options with main Makefile
 STDCCFLAGS	+= -DNDEBUG
-STDCCFLAGS	+= $(shell grep ^DEBUG_THREADS ../../Makefile | sed -e "s/^DEBUG_THREADS[ 	]*=//" -e "s/\([^\#]*\)\#.*/\1/")
+STDCCFLAGS	+= $(shell grep ^DEBUG_THREADS ../../Makefile | sed -e "s/^DEBUG_THREADS[ 	]+*=//" -e "s/\([^\#]*\)\#.*/\1/")
 STDCCFLAGS	+= -I../../include -include autoconfig.h
-STDCCFLAGS	+= -Wmissing-prototypes
 STDCCFLAGS	+= -fPIC
 #OPTCCFLAGS	+=
 CFLAGS		+= -pipe
@@ -37,5 +36,8 @@ Makefile.ast:	FORCE
 	@echo H323LDFLAGS = $(CFLAGS) $(LDFLAGS) >>$@.tmp
 	@echo H323LDLIBS  = $(LDLIBS) $(ENDLDLIBS) $(ENDLDFLAGS) >>$@.tmp
 	@if [ -r $@ ] && cmp -s $@ $@.tmp; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
+
+clean::
+	rm -f ast_h323.cxx libchanh323.a Makefile.ast *.dep
 
 FORCE:
