@@ -174,6 +174,14 @@ AST_EXT_LIB([tds], [tds_version], [tds.h], [FREETDS], [FreeTDS])
 AST_EXT_LIB([vorbis], [vorbis_info_init], [vorbis/codec.h], [VORBIS], [Vorbis], [-lm -lvorbisenc])
 AST_EXT_LIB([z], [compress], [zlib.h], [ZLIB], [zlib])
 
+EDITLINE_LIBS=""
+AC_CHECK_LIB([termcap], [tgetent], [EDITLINE_LIBS="-ltermcap "], \
+  AC_CHECK_LIB([tinfo], [tgetent], [EDITLINE_LIBS="-ltinfo "], \
+    AC_CHECK_LIB([curses], [tgetent], [EDITLINE_LIBS="-lcurses "], \
+      AC_CHECK_LIB([ncurses], [tgetent], [EDITLINE_LIBS="-lncurses "], \
+        AC_MSG_ERROR(*** termcap support not found)))))
+AC_SUBST(EDITLINE_LIBS)
+
 PBX_LIBossaudio=0
 AC_CHECK_HEADER([linux/soundcard.h],
 	        [
@@ -339,7 +347,7 @@ case ${withval} in
 esac
 ])
 if test "${USE_VPB}" != "no"; then
-   echo -n "checking for vpb_open in -lvpb..."
+   echo -n "checking for vpb_open in -lvpb... "
    saved_libs="${LIBS}"
    saved_cppflags="${CPPFLAGS}"
    if test "x${VPB_DIR}" != "x"; then
@@ -401,7 +409,7 @@ esac
 
 PBX_QT=0
 if test "${USE_QT}" != "no"; then
-   echo -n "checking for QDate in -lqt..."
+   echo -n "checking for QDate in -lqt... "
    saved_libs="${LIBS}"
    saved_cppflags="${CPPFLAGS}"
    if test "x${QT_DIR}" != "x"; then
@@ -487,7 +495,7 @@ esac
 
 PBX_KDE=0
 if test "${USE_KDE}" != "no"; then
-   echo -n "checking for crashHandler in -lkdecore..."
+   echo -n "checking for crashHandler in -lkdecore... "
    saved_ldflags="${LDFLAGS}"
    LDFLAGS="-I${KDE_DIR}/include ${LDFLAGS} -L${KDE_DIR}/lib -lkdecore"
 	AC_LINK_IFELSE(
@@ -566,7 +574,7 @@ case ${withval} in
 esac
 ])
 if test "${USE_PWLIB}" != "no"; then
-	echo -n "checking for existence of pwlib..."
+	echo -n "checking for existence of pwlib... "
 	
 	saved_ldflags="${LDFLAGS}"
 	LDFLAGS="${LDFLAGS} -L${PWLIB_DIR} -l${PLATFORM_PTLIB}"
@@ -696,7 +704,7 @@ echo
 
 echo "Package configured for: "
 echo " OS type  : $PBX_OSTYPE"
-echo " host cpu : $host_cpu"
+echo " Host CPU : $host_cpu"
 if test "x${crossCompile}" = xYes; then
    echo ""
    echo " Cross Compilation = YES"
