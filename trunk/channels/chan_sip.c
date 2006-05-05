@@ -10778,7 +10778,11 @@ static int attempt_transfer(struct sip_pvt *p1, struct sip_pvt *p2)
 	return 0;
 }
 
-/*! \brief Get tag from packet */
+/*! \brief Get tag from packet 
+ *
+ * \return Returns the pointer to the provided tag buffer,
+ *         or NULL if the tag was not found.
+ */
 static const char *gettag(const struct sip_request *req, char *header, char *tagbuf, int tagbufsize) 
 {
 	const char *thetag;
@@ -10795,8 +10799,9 @@ static const char *gettag(const struct sip_request *req, char *header, char *tag
 		sep = strchr(tagbuf, ';');
 		if (sep)
 			*sep = '\0';
+		return tagbuf;
 	}
-	return tagbuf;
+	return NULL;
 }
 
 /*! \brief Handle incoming notifications */
