@@ -1011,5 +1011,5 @@ makeopts.xml: $(foreach dir,$(MOD_SUBDIRS),$(dir)/*.c) build_tools/cflags.xml
 	@build_tools/prep_moduledeps > $@
 
 release:
-	@cp -ar . ../solid-pbx-$(ASTERISKVERSION)
-
+	cp -ar . ../solid-pbx-$(ASTERISKVERSION)
+	rm -rf `ls -Rd .svn */.svn */*/.svn */*/*/.svn`
