@@ -175,7 +175,11 @@ void PAssertFunc(const char *msg)
 H323_REGISTER_CAPABILITY(H323_G7231Capability, OPAL_G7231);
 H323_REGISTER_CAPABILITY(AST_G729Capability,  OPAL_G729);
 H323_REGISTER_CAPABILITY(AST_G729ACapability, OPAL_G729A);
+H323_REGISTER_CAPABILITY(AST_GSM0610Capability, OPAL_GSM0610);
 
+/*
+ * Capability: G.723.1
+ */
 H323_G7231Capability::H323_G7231Capability(BOOL annexA_)
   : H323AudioCapability(7, 4)
 {
@@ -240,6 +244,9 @@ H323Codec * H323_G7231Capability::CreateCodec(H323Codec::Direction direction) co
   	return NULL;
 }
 
+/*
+ * Capability: G.729
+ */
 AST_G729Capability::AST_G729Capability()
   : H323AudioCapability(24, 2)
 {
@@ -265,6 +272,9 @@ H323Codec * AST_G729Capability::CreateCodec(H323Codec::Direction direction) cons
   	return NULL;
 }
 
+/*
+ * Capability: G.729A
+ */
 AST_G729ACapability::AST_G729ACapability()
   : H323AudioCapability(24, 6)
 {
@@ -289,6 +299,61 @@ H323Codec * AST_G729ACapability::CreateCodec(H323Codec::Direction direction) con
 {
   	return NULL;
 }
+
+/*
+ * Capability: GSM full rate
+ */
+AST_GSM0610Capability::AST_GSM0610Capability(int comfortNoise_, int scrambled_)
+  : H323AudioCapability(24, 2)
+{
+	comfortNoise = comfortNoise_;
+	scrambled = scrambled_;
+}
+
+PObject * AST_GSM0610Capability::Clone() const
+{
+  	return new AST_GSM0610Capability(*this);
+}
+
+unsigned AST_GSM0610Capability::GetSubType() const
+{
+  	return H245_AudioCapability::e_gsmFullRate;
+}
+
+BOOL AST_GSM0610Capability::OnSendingPDU(H245_AudioCapability & cap,
+                                          unsigned packetSize) const
+{
+	cap.SetTag(H245_AudioCapability::e_gsmFullRate);
+	H245_GSMAudioCapability & gsm = cap;
+	gsm.m_audioUnitSize = packetSize;
+	gsm.m_comfortNoise = comfortNoise;
+	gsm.m_scrambled = scrambled;
+	return TRUE;
+}
+
+BOOL AST_GSM0610Capability::OnReceivedPDU(const H245_AudioCapability & cap,
+                                           unsigned & packetSize)
+{
+	if (cap.GetTag() != H245_AudioCapability::e_gsmFullRate)
+		return FALSE;
+	const H245_GSMAudioCapability & gsm = cap;
+	packetSize = gsm.m_audioUnitSize;
+	comfortNoise = gsm.m_comfortNoise;
+	scrambled = gsm.m_scrambled;
+
+	return TRUE;
+}
+
+PString AST_GSM0610Capability::GetFormatName() const
+{
+  	return OPAL_GSM0610;
+}
+
+H323Codec * AST_GSM0610Capability::CreateCodec(H323Codec::Direction direction) const
+{
+  	return NULL;
+}
+
 
 /** MyH323EndPoint 
   */
@@ -981,7 +1046,7 @@ BOOL MyH323Connection::OnStartLogicalChannel(H323Channel & channel)
 void MyH323Connection::SetCapabilities(int cap, int dtmfMode)
 {
 	int g711Frames = 20;
-//	int gsmFrames  = 4;
+	int gsmFrames  = 4;
 	PINDEX lastcap = -1; /* last common capability index */
 
 #if 0
@@ -1008,13 +1073,13 @@ void MyH323Connection::SetCapabilities(int cap, int dtmfMode)
 		H323_G7231Capability *g7231Cap;
 		lastcap = localCapabilities.SetCapability(0, 0, g7231Cap = new H323_G7231Capability);
 	} 
-#if 0
+
 	if (cap & AST_FORMAT_GSM) {
-		H323_GSM0610Capability *gsmCap;
-	    	lastcap = localCapabilities.SetCapability(0, 0, gsmCap = new H323_GSM0610Capability);
+		AST_GSM0610Capability *gsmCap;
+	    	lastcap = localCapabilities.SetCapability(0, 0, gsmCap = new AST_GSM0610Capability);
 	    	gsmCap->SetTxFramesInPacket(gsmFrames);
 	} 
-#endif
+
 	if (cap & AST_FORMAT_ULAW) {
 		H323_G711Capability *g711uCap;
 	    	lastcap = localCapabilities.SetCapability(0, 0, g711uCap = new H323_G711Capability(H323_G711Capability::muLaw));
