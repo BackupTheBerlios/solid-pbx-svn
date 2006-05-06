@@ -1010,3 +1010,6 @@ makeopts.xml: $(foreach dir,$(MOD_SUBDIRS),$(dir)/*.c) build_tools/cflags.xml
 	@echo "Generating list of available modules ..."
 	@build_tools/prep_moduledeps > $@
 
+release:
+	@cp -ar . ../solid-pbx-$(ASTERISKVERSION)
+
