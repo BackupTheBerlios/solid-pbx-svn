@@ -171,15 +171,24 @@ AST_EXT_LIB([speex], [speex_encode], [speex/speex.h], [SPEEX], [Speex], [-lm])
 AST_EXT_LIB([sqlite], [sqlite_exec], [sqlite.h], [SQLITE], [SQLite])
 AST_EXT_LIB([ssl], [ssl2_connect], [openssl/ssl.h], [OPENSSL], [OpenSSL], [-lcrypto])
 AST_EXT_LIB([tds], [tds_version], [tds.h], [FREETDS], [FreeTDS])
+AST_EXT_LIB([termcap], [tgetent], [], [TERMCAP], [Termcap])
+AST_EXT_LIB([tinfo], [tgetent], [], [TINFO], [Term Info])
 AST_EXT_LIB([vorbis], [vorbis_info_init], [vorbis/codec.h], [VORBIS], [Vorbis], [-lm -lvorbisenc])
 AST_EXT_LIB([z], [compress], [zlib.h], [ZLIB], [zlib])
 
 EDITLINE_LIBS=""
-AC_CHECK_LIB([termcap], [tgetent], [EDITLINE_LIBS="-ltermcap "], \
-  AC_CHECK_LIB([tinfo], [tgetent], [EDITLINE_LIBS="-ltinfo "], \
-    AC_CHECK_LIB([curses], [tgetent], [EDITLINE_LIBS="-lcurses "], \
-      AC_CHECK_LIB([ncurses], [tgetent], [EDITLINE_LIBS="-lncurses "], \
-        AC_MSG_ERROR(*** termcap support not found)))))
+if test "x$termcap_LIB" != "x" ; then
+  EDITLINE_LIBS="$termcap_LIB"
+elif test "x$tinfo_LIB" != "x" ; then
+  EDITLINE_LIBS="$tinfo_LIB"
+elif test "x$curses_LIB" != "x" ; then
+  EDITLINE_LIBS="$curses_LIB"
+elif test "x$ncurses_LIB" != "x" ; then
+  EDITLINE_LIBS="$ncurses_LIB"
+else
+  echo "*** termcap support not found"
+  exit 1
+fi
 AC_SUBST(EDITLINE_LIBS)
 
 PBX_LIBossaudio=0
