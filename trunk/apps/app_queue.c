@@ -1214,7 +1214,9 @@ static int say_position(struct queue_ent *qe)
 	/* Set our last_pos indicators */
  	qe->last_pos = now;
 	qe->last_pos_said = qe->pos;
-	ast_moh_start(qe->chan, qe->moh);
+	/* Don't restart music on hold if we're about to exit the caller from the queue */
+	if (!res)
+		ast_moh_start(qe->chan, qe->moh);
 
 	return res;
 }
@@ -2365,13 +2367,14 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 					mixmonapp = NULL;
 				}
 
+				if (!monitor_options)
+					monitor_options = ast_strdupa("");
+
 				if (mixmonapp) {
 					if (!ast_strlen_zero(monitor_exec) && !ast_strlen_zero(monitor_options)) 
 						snprintf(mixmonargs, sizeof(mixmonargs)-1, "%s|b%s|%s", tmpid2, monitor_options, monitor_exec);
-					else if (!ast_strlen_zero(monitor_options)) 
-						snprintf(mixmonargs, sizeof(mixmonargs)-1, "%s|b%s", tmpid2, monitor_options);
 					else 
-						snprintf(mixmonargs, sizeof(mixmonargs)-1, "%s|b", tmpid2);
+						snprintf(mixmonargs, sizeof(mixmonargs)-1, "%s|b%s", tmpid2, monitor_options);
 						
 					if (option_debug)
 						ast_log(LOG_DEBUG, "Arguments being passed to MixMonitor: %s\n", mixmonargs);
@@ -3143,7 +3146,7 @@ check_turns:
 					/* Make a position announcement, if enabled */
 					if (qe.parent->announcefrequency && !ringing)
 						res = say_position(&qe);
-					if (res && valid_exit(&qe, res)) {
+					if (res) {
 						 ast_queue_log(args.queuename, chan->uniqueid, "NONE", "EXITWITHKEY", "%s|%d", qe.digits, qe.pos);
 						break;
 					}
