@@ -1197,58 +1197,51 @@ int ast_custom_function_register(struct ast_custom_function *acf)
 	return 0;
 }
 
-int ast_func_read(struct ast_channel *chan, char *function, char *workspace, size_t len)
+/*! \brief return a pointer to the arguments of the function,
+ * and terminates the function name with '\0'
+ */
+static char *func_args(char *function)
 {
-	char *args = NULL, *p;
-	struct ast_custom_function *acfptr;
+	char *args = strchr(function, '(');
 
-	if ((args = strchr(function, '('))) {
+	if (!args)
+		ast_log(LOG_WARNING, "Function doesn't contain parentheses.  Assuming null argument.\n");
+	else {
+		char *p;
 		*args++ = '\0';
-		if ((p = strrchr(args, ')')))
+		if ((p = strrchr(args, ')')) )
 			*p = '\0';
 		else
 			ast_log(LOG_WARNING, "Can't find trailing parenthesis?\n");
-	} else {
-		ast_log(LOG_WARNING, "Function doesn't contain parentheses.  Assuming null argument.\n");
 	}
+	return args;
+}
 
-	if ((acfptr = ast_custom_function_find(function))) {
-		/* run the custom function */
-		if (acfptr->read)
-			return acfptr->read(chan, function, args, workspace, len);
-		else
-			ast_log(LOG_ERROR, "Function %s cannot be read\n", function);
-	} else {
+int ast_func_read(struct ast_channel *chan, char *function, char *workspace, size_t len)
+{
+	char *args = func_args(function);
+	struct ast_custom_function *acfptr = ast_custom_function_find(function);
+
+	if (acfptr == NULL)
 		ast_log(LOG_ERROR, "Function %s not registered\n", function);
-	}
-
+	else if (!acfptr->read)
+		ast_log(LOG_ERROR, "Function %s cannot be read\n", function);
+	else
+		return acfptr->read(chan, function, args, workspace, len);
 	return -1;
 }
 
 int ast_func_write(struct ast_channel *chan, char *function, const char *value)
 {
-	char *args = NULL, *p;
-	struct ast_custom_function *acfptr;
+	char *args = func_args(function);
+	struct ast_custom_function *acfptr = ast_custom_function_find(function);
 
-	if ((args = strchr(function, '('))) {
-		*args++ = '\0';
-		if ((p = strrchr(args, ')')))
-			*p = '\0';
-		else
-			ast_log(LOG_WARNING, "Can't find trailing parenthesis?\n");
-	} else {
-		ast_log(LOG_WARNING, "Function doesn't contain parentheses.  Assuming null argument.\n");
-	}
-
-	if ((acfptr = ast_custom_function_find(function))) {
-		/* run the custom function */
-		if (acfptr->write)
-			return acfptr->write(chan, function, args, value);
-		else
-			ast_log(LOG_ERROR, "Function %s is read-only, it cannot be written to\n", function);
-	} else {
+	if (acfptr == NULL)
 		ast_log(LOG_ERROR, "Function %s not registered\n", function);
-	}
+	else if (!acfptr->write)
+		ast_log(LOG_ERROR, "Function %s cannot be written to\n", function);
+	else
+		return acfptr->write(chan, function, args, value);
 
 	return -1;
 }
@@ -1705,35 +1698,35 @@ void ast_hint_state_changed(const char *device)
 	AST_LIST_TRAVERSE(&hints, hint, list) {
 		struct ast_state_cb *cblist;
 		char buf[AST_MAX_EXTENSION];
-		char *parse;
+		char *parse = buf;
 		char *cur;
 		int state;
 
 		ast_copy_string(buf, ast_get_extension_app(hint->exten), sizeof(buf));
-		parse = buf;
-		for (cur = strsep(&parse, "&"); cur; cur = strsep(&parse, "&")) {
-			if (strcasecmp(cur, device))
-				continue;
-
-			/* Get device state for this hint */
-			state = ast_extension_state2(hint->exten);
-			
-			if ((state == -1) || (state == hint->laststate))
-				continue;
-
-			/* Device state changed since last check - notify the watchers */
-			
-			/* For general callbacks */
-			for (cblist = statecbs; cblist; cblist = cblist->next)
-				cblist->callback(hint->exten->parent->name, hint->exten->exten, state, cblist->data);
-			
-			/* For extension callbacks */
-			for (cblist = hint->callbacks; cblist; cblist = cblist->next)
-				cblist->callback(hint->exten->parent->name, hint->exten->exten, state, cblist->data);
-			
-			hint->laststate = state;
-			break;
+		while ( (cur = strsep(&parse, "&")) ) {
+			if (!strcasecmp(cur, device))
+				break;
 		}
+		if (!cur)
+			continue;
+
+		/* Get device state for this hint */
+		state = ast_extension_state2(hint->exten);
+			
+		if ((state == -1) || (state == hint->laststate))
+			continue;
+
+		/* Device state changed since last check - notify the watchers */
+			
+		/* For general callbacks */
+		for (cblist = statecbs; cblist; cblist = cblist->next)
+			cblist->callback(hint->exten->parent->name, hint->exten->exten, state, cblist->data);
+		
+		/* For extension callbacks */
+		for (cblist = hint->callbacks; cblist; cblist = cblist->next)
+			cblist->callback(hint->exten->parent->name, hint->exten->exten, state, cblist->data);
+			
+		hint->laststate = state;
 	}
 
 	AST_LIST_UNLOCK(&hints);
@@ -1817,8 +1810,8 @@ int ast_extension_state_add(const char *context, const char *exten,
 /*! \brief  ast_extension_state_del: Remove a watcher from the callback list */
 int ast_extension_state_del(int id, ast_state_cb_type callback)
 {
-	struct ast_hint *hint;
-	struct ast_state_cb *cblist, *cbprev;
+	struct ast_state_cb **p_cur = NULL;	/* address of pointer to us */
+	int ret = -1;
 
 	if (!id && !callback)
 		return -1;
@@ -1826,49 +1819,30 @@ int ast_extension_state_del(int id, ast_state_cb_type callback)
 	AST_LIST_LOCK(&hints);
 
 	/* id is zero is a callback without extension */
-	if (!id) {
-		cbprev = NULL;
-		for (cblist = statecbs; cblist; cblist = cblist->next) {
-	 		if (cblist->callback == callback) {
-				if (!cbprev)
-		    			statecbs = cblist->next;
-				else
-		    			cbprev->next = cblist->next;
-
-				free(cblist);
-
-	        		AST_LIST_UNLOCK(&hints);
-				return 0;
-	    		}
-	    		cbprev = cblist;
+	if (!id) {	/* id == 0 is a callback without extension */
+		for (p_cur = &statecbs; *p_cur; p_cur = &(*p_cur)->next) {
+	 		if ((*p_cur)->callback == callback)
+				break;
 		}
-
-		AST_LIST_UNLOCK(&hints);
-		return -1;
-	}
-
-	/* id greater than zero is a callback with extension */
-	/* Find the callback based on ID */
-	AST_LIST_TRAVERSE(&hints, hint, list) {
-		cbprev = NULL;
-		for (cblist = hint->callbacks; cblist; cblist = cblist->next) {
-	    		if (cblist->id==id) {
-				if (!cbprev)
-		    			hint->callbacks = cblist->next;		
-				else
-		    			cbprev->next = cblist->next;
-		
-				free(cblist);
-		
-				AST_LIST_UNLOCK(&hints);
-				return 0;		
-	    		}		
-	    		cbprev = cblist;				
+	} else { /* callback with extension, find the callback based on ID */
+		struct ast_hint *hint;
+		AST_LIST_TRAVERSE(&hints, hint, list) {
+			for (p_cur = &hint->callbacks; *p_cur; p_cur = &(*p_cur)->next) {
+	    			if ((*p_cur)->id == id)
+					break;
+			}
+			if (*p_cur)	/* found in the inner loop */
+				break;
 		}
 	}
-
+	if (p_cur && *p_cur) {
+		struct ast_state_cb *cur = *p_cur;
+		*p_cur = cur->next;
+		free(cur);
+		ret = 0;
+	}
 	AST_LIST_UNLOCK(&hints);
-	return -1;
+	return ret;
 }
 
 /*! \brief  ast_add_hint: Add hint to hint list, check initial extension state */
@@ -2029,8 +2003,11 @@ static int __ast_pbx_run(struct ast_channel *c)
 	int autoloopflag;
 
 	/* A little initial setup here */
-	if (c->pbx)
+	if (c->pbx) {
 		ast_log(LOG_WARNING, "%s already has PBX structure??\n", c->name);
+		/* XXX and now what ? */
+		free(c->pbx);
+	}
 	if (!(c->pbx = ast_calloc(1, sizeof(*c->pbx))))
 		return -1;
 	if (c->amaflags) {
@@ -2048,7 +2025,7 @@ static int __ast_pbx_run(struct ast_channel *c)
 	c->pbx->rtimeout = 10;
 	c->pbx->dtimeout = 5;
 
-	autoloopflag = ast_test_flag(c, AST_FLAG_IN_AUTOLOOP);
+	autoloopflag = ast_test_flag(c, AST_FLAG_IN_AUTOLOOP);	/* save value to restore at the end */
 	ast_set_flag(c, AST_FLAG_IN_AUTOLOOP);
 
 	/* Start by trying whatever the channel is set to */
@@ -3959,16 +3936,15 @@ int ast_context_add_ignorepat2(struct ast_context *con, const char *value, const
 
 int ast_ignore_pattern(const char *context, const char *pattern)
 {
-	struct ast_context *con;
-	struct ast_ignorepat *pat;
-
-	con = ast_context_find(context);
+	struct ast_context *con = ast_context_find(context);
 	if (con) {
+		struct ast_ignorepat *pat;
 		for (pat = con->ignorepats; pat; pat = pat->next) {
 			if (ast_extension_match(pat->pattern, pattern))
 				return 1;
 		}
 	} 
+
 	return 0;
 }
 
@@ -4018,8 +3994,7 @@ int ast_async_goto(struct ast_channel *chan, const char *context, const char *ex
 
 	ast_channel_lock(chan);
 
-	if (chan->pbx) {
-		/* This channel is currently in the PBX */
+	if (chan->pbx) { /* This channel is currently in the PBX */
 		ast_explicit_goto(chan, context, exten, priority);
 		ast_softhangup_nolock(chan, AST_SOFTHANGUP_ASYNCGOTO);
 	} else {
