@@ -738,10 +738,25 @@ int ast_queue_hangup(struct ast_channel *chan)
 }
 
 /*! \brief Queue a control frame */
-int ast_queue_control(struct ast_channel *chan, int control)
+int ast_queue_control(struct ast_channel *chan, enum ast_control_frame_type control)
 {
 	struct ast_frame f = { AST_FRAME_CONTROL, };
+
 	f.subclass = control;
+
+	return ast_queue_frame(chan, &f);
+}
+
+/*! \brief Queue a control frame with payload */
+int ast_queue_control_data(struct ast_channel *chan, enum ast_control_frame_type control,
+			   const void *data, size_t datalen)
+{
+	struct ast_frame f = { AST_FRAME_CONTROL, };
+
+	f.subclass = control;
+	f.data = (void *) data;
+	f.datalen = datalen;
+
 	return ast_queue_frame(chan, &f);
 }
 
@@ -1470,6 +1485,9 @@ int ast_answer(struct ast_channel *chan)
 {
 	int res = 0;
 	ast_channel_lock(chan);
+	/* You can't answer an outbound call */
+	if (ast_test_flag(chan, AST_FLAG_OUTGOING))
+		return 0;
 	/* Stop if we're a zombie or need a soft hangup */
 	if (ast_test_flag(chan, AST_FLAG_ZOMBIE) || ast_check_hangup(chan)) {
 		ast_channel_unlock(chan);
@@ -1938,13 +1956,17 @@ static struct ast_frame *__ast_read(struct ast_channel *chan, int dropaudio)
 		switch (f->frametype) {
 		case AST_FRAME_CONTROL:
 			if (f->subclass == AST_CONTROL_ANSWER) {
-				if (prestate == AST_STATE_UP) {
+				if (!ast_test_flag(chan, AST_FLAG_OUTGOING)) {
+					ast_log(LOG_DEBUG, "Ignoring answer on an inbound call!\n");
+					f = &ast_null_frame;
+				} else if (prestate == AST_STATE_UP) {
 					ast_log(LOG_DEBUG, "Dropping duplicate answer!\n");
 					f = &ast_null_frame;
+				} else {
+					/* Answer the CDR */
+					ast_setstate(chan, AST_STATE_UP);
+					ast_cdr_answer(chan->cdr);
 				}
-				/* Answer the CDR */
-				ast_setstate(chan, AST_STATE_UP);
-				ast_cdr_answer(chan->cdr);
 			}
 			break;
 		case AST_FRAME_DTMF:
@@ -2623,9 +2645,11 @@ int ast_call(struct ast_channel *chan, char *addr, int timeout)
 	int res = -1;
 	/* Stop if we're a zombie or need a soft hangup */
 	ast_channel_lock(chan);
-	if (!ast_test_flag(chan, AST_FLAG_ZOMBIE) && !ast_check_hangup(chan))
+	if (!ast_test_flag(chan, AST_FLAG_ZOMBIE) && !ast_check_hangup(chan)) {
 		if (chan->tech->call)
 			res = chan->tech->call(chan, addr, timeout);
+		ast_set_flag(chan, AST_FLAG_OUTGOING);
+	}
 	ast_channel_unlock(chan);
 	return res;
 }
