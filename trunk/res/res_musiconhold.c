@@ -46,7 +46,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 22267 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
 #ifdef HAVE_ZAPTEL
 #ifdef __linux__

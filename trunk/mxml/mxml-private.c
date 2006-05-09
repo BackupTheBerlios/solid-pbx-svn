@@ -1,5 +1,5 @@
 /*
- * "$Id: mxml-private.c 22267 2006-04-24 17:11:45Z kpfleming $"
+ * "$Id: mxml-private.c 96 2006-05-08 19:46:15Z casper2 $"
  *
  * Private functions for Mini-XML, a small XML-like file parsing library.
  *
@@ -124,5 +124,5 @@ mxml_real_cb(mxml_node_t *node)		/* I - Current node */
 
 
 /*
- * End of "$Id: mxml-private.c 22267 2006-04-24 17:11:45Z kpfleming $".
+ * End of "$Id: mxml-private.c 96 2006-05-08 19:46:15Z casper2 $".
  */

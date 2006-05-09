@@ -1,5 +1,5 @@
 /*
- * "$Id: mxml-search.c 22267 2006-04-24 17:11:45Z kpfleming $"
+ * "$Id: mxml-search.c 96 2006-05-08 19:46:15Z casper2 $"
  *
  * Search/navigation functions for Mini-XML, a small XML-like file
  * parsing library.
@@ -195,5 +195,5 @@ mxmlWalkPrev(mxml_node_t *node,		/* I - Current node */
 
 
 /*
- * End of "$Id: mxml-search.c 22267 2006-04-24 17:11:45Z kpfleming $".
+ * End of "$Id: mxml-search.c 96 2006-05-08 19:46:15Z casper2 $".
  */

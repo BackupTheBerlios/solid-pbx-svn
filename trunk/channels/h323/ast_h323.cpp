@@ -26,7 +26,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
  *
- * Version Info: $Id: ast_h323.cpp 17104 2006-04-03 18:36:30Z mogorman $
+ * Version Info: $Id: ast_h323.cpp 96 2006-05-08 19:46:15Z casper2 $
  */
 #include <arpa/inet.h>
 

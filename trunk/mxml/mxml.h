@@ -1,5 +1,5 @@
 /*
- * "$Id: mxml.h 22267 2006-04-24 17:11:45Z kpfleming $"
+ * "$Id: mxml.h 96 2006-05-08 19:46:15Z casper2 $"
  *
  * Header file for Mini-XML, a small XML-like file parsing library.
  *
@@ -250,5 +250,5 @@ extern mxml_type_t	mxml_real_cb(mxml_node_t *node);
 
 
 /*
- * End of "$Id: mxml.h 22267 2006-04-24 17:11:45Z kpfleming $".
+ * End of "$Id: mxml.h 96 2006-05-08 19:46:15Z casper2 $".
  */

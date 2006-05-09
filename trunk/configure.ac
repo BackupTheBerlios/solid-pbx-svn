@@ -20,7 +20,7 @@ AC_CONFIG_SRCDIR([asterisk.c])
 AC_CONFIG_HEADER(include/autoconfig.h)
 
 AC_COPYRIGHT("Asterisk")
-AC_REVISION($Revision: 25611 $)
+AC_REVISION($Revision$)
 
 AC_PREFIX_DEFAULT()
 

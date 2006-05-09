@@ -23,7 +23,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
  *
- * Version Info: $Id: chan_h323.h 9991 2006-02-14 19:14:15Z kpfleming $
+ * Version Info: $Id: chan_h323.h 96 2006-05-08 19:46:15Z casper2 $
  */
 
 #include <arpa/inet.h>

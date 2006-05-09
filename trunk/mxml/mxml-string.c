@@ -1,5 +1,5 @@
 /*
- * "$Id: mxml-string.c 22267 2006-04-24 17:11:45Z kpfleming $"
+ * "$Id: mxml-string.c 96 2006-05-08 19:46:15Z casper2 $"
  *
  * String functions for Mini-XML, a small XML-like file parsing library.
  *
@@ -373,5 +373,5 @@ mxml_vsnprintf(char       *buffer,	/* O - Output buffer */
 
 
 /*
- * End of "$Id: mxml-string.c 22267 2006-04-24 17:11:45Z kpfleming $".
+ * End of "$Id: mxml-string.c 96 2006-05-08 19:46:15Z casper2 $".
  */
