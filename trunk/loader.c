@@ -33,7 +33,7 @@
 #define MOD_LOADER	/* prevent some module-specific stuff from being compiled */
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
 #include "asterisk/linkedlists.h"
 #include "asterisk/module.h"

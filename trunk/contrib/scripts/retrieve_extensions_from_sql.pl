@@ -16,7 +16,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# $Id: retrieve_extensions_from_sql.pl 96 2006-05-08 19:46:15Z casper2 $
+# $Id$
 #
 # Use these commands to create the appropriate SQL tables
 # If flags is 1 then the record is not included in the output extensions file

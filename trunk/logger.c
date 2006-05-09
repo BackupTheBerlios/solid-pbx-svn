@@ -45,7 +45,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 
 static int syslog_level_map[] = {
 	LOG_DEBUG,

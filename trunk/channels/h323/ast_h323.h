@@ -23,7 +23,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. 
  *
- * Version Info: $Id: ast_h323.h 96 2006-05-08 19:46:15Z casper2 $ 
+ * Version Info: $Id$ 
  */
 
 #ifndef AST_H323_H

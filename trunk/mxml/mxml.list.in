@@ -1,5 +1,5 @@
 #
-# "$Id: mxml.list.in 96 2006-05-08 19:46:15Z casper2 $"
+# "$Id$"
 #
 # EPM software list file for Mini-XML, a small XML library.
 #
@@ -110,5 +110,5 @@ f 0444 root sys ${mandir}/cat3/mxml.$CAT3EXT $srcdir/mxml.$CAT3EXT
 f 0444 root sys ${mandir}/man3/mxml.$MAN3EXT $srcdir/mxml.man
 
 #
-# End of "$Id: mxml.list.in 96 2006-05-08 19:46:15Z casper2 $".
+# End of "$Id$".
 #

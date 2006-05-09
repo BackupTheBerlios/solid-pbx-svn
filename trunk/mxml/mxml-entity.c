@@ -1,5 +1,5 @@
 /*
- * "$Id: mxml-entity.c 96 2006-05-08 19:46:15Z casper2 $"
+ * "$Id$"
  *
  * Character entity support code for Mini-XML, a small XML-like
  * file parsing library.
@@ -468,5 +468,5 @@ default_callback(const char *name)	/* I - Entity name */
 
 
 /*
- * End of "$Id: mxml-entity.c 96 2006-05-08 19:46:15Z casper2 $".
+ * End of "$Id$".
  */
