@@ -71,7 +71,7 @@ static float pp_dereverb_level = 0.3;
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/translate.h"

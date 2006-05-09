@@ -55,7 +55,7 @@
 
 #include "asterisk.h"
  
-ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
 
 #include "private.h"
 #include "tzfile.h"

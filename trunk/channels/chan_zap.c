@@ -74,7 +74,7 @@
 #endif
 #endif
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/channel.h"

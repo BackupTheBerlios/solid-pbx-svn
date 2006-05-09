@@ -92,7 +92,7 @@ extern int daemon(int, int);  /* defined in libresolv of all places */
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
 
 #include "asterisk/logger.h"
 #include "asterisk/options.h"

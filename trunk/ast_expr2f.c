@@ -1371,7 +1371,7 @@ static yyconst yy_state_type yy_NUL_trans[54] =
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 113 $")
 
 #include "asterisk/ast_expr.h"
 #include "asterisk/logger.h"
