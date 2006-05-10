@@ -4346,6 +4346,7 @@ int ast_add_extension2(struct ast_context *con,
 	tmp->registrar = registrar;
 
 	ast_mutex_lock(&con->lock);
+	res = 0; /* some compilers will think it is uninitialized otherwise */
 	for (e = con->root; e; el = e, e = e->next) {   /* scan the extension list */
 		res = ext_cmp(e->exten, extension);
 		if (res == 0) { /* extension match, now look at cidmatch */
@@ -4362,14 +4363,14 @@ int ast_add_extension2(struct ast_context *con,
 			break;
 	}
 	if (e && res == 0) { /* exact match, insert in the pri chain */
-			int ret = add_pri(con, tmp, el, e, replace);
-			ast_mutex_unlock(&con->lock);
-			if (ret < 0)
-				errno = EEXIST;
-			else {
-				LOG;
-			}
-			return ret;
+		int ret = add_pri(con, tmp, el, e, replace);
+		ast_mutex_unlock(&con->lock);
+		if (ret < 0)
+			errno = EEXIST;
+		else {
+			LOG;
+		}
+		return ret;
 	}
 	/*
 	 * not an exact match, this is the first entry with this pattern,
