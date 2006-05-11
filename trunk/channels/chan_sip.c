@@ -1199,7 +1199,6 @@ static void build_callid_registry(struct sip_registry *reg, struct in_addr ourip
 static void make_our_tag(char *tagbuf, size_t len);
 static int add_header(struct sip_request *req, const char *var, const char *value);
 static int add_header_contentLength(struct sip_request *req, int len);
-static int add_blank_header(struct sip_request *req);
 static int add_line(struct sip_request *req, const char *line);
 static int add_text(struct sip_request *req, const char *text);
 static int add_digit(struct sip_request *req, char digit);
@@ -1796,11 +1795,22 @@ static void parse_copy(struct sip_request *dst, struct sip_request *src)
 	parse_request(dst);
 }
 
+/* add a blank line if no body */
+static void add_blank(struct sip_request *req)
+{
+	if (!req->lines) {
+		/* Add extra empty return. add_header() reserves 4 bytes so cannot be truncated */
+		snprintf(req->data + req->len, sizeof(req->data) - req->len, "\r\n");
+		req->len += strlen(req->data + req->len);
+	}
+}
+
 /*! \brief Transmit response on SIP request*/
 static int send_response(struct sip_pvt *p, struct sip_request *req, enum xmittype reliable, int seqno)
 {
 	int res;
 
+	add_blank(req);
 	if (sip_debug_test_pvt(p)) {
 		char iabuf[INET_ADDRSTRLEN];
 		if (ast_test_flag(&p->flags[0], SIP_NAT_ROUTE))
@@ -1827,6 +1837,7 @@ static int send_request(struct sip_pvt *p, struct sip_request *req, enum xmittyp
 {
 	int res;
 
+	add_blank(req);
 	if (sip_debug_test_pvt(p)) {
 		char iabuf[INET_ADDRSTRLEN];
 		if (ast_test_flag(&p->flags[0], SIP_NAT_ROUTE))
@@ -4148,28 +4159,6 @@ static int add_header_contentLength(struct sip_request *req, int len)
 	return add_header(req, "Content-Length", clen);
 }
 
-/*! \brief Add blank header to SIP message */
-static int add_blank_header(struct sip_request *req)
-{
-	if (req->headers == SIP_MAX_HEADERS)  {
-		ast_log(LOG_WARNING, "Out of SIP header space\n");
-		return -1;
-	}
-	if (req->lines) {
-		ast_log(LOG_WARNING, "Can't add more headers when lines have been added\n");
-		return -1;
-	}
-	if (req->len >= sizeof(req->data) - 4) {
-		ast_log(LOG_WARNING, "Out of space, can't add anymore\n");
-		return -1;
-	}
-	req->header[req->headers] = req->data + req->len;
-	snprintf(req->header[req->headers], sizeof(req->data) - req->len, "\r\n");
-	req->len += strlen(req->header[req->headers]);
-	req->headers++;
-	return 0;	
-}
-
 /*! \brief Add content (not header) to SIP message */
 static int add_line(struct sip_request *req, const char *line)
 {
@@ -4578,7 +4567,6 @@ static int __transmit_response(struct sip_pvt *p, const char *msg, struct sip_re
 		snprintf(buf, sizeof(buf), "%d", p->owner->hangupcause);
 		add_header(&resp, "X-Asterisk-HangupCauseCode", buf);
 	}
-	add_blank_header(&resp);
 	return send_response(p, &resp, reliable, seqno);
 }
 
@@ -4625,7 +4613,6 @@ static int transmit_response_with_date(struct sip_pvt *p, char *msg, struct sip_
 	respprep(&resp, p, msg, req);
 	append_date(&resp);
 	add_header_contentLength(&resp, 0);
-	add_blank_header(&resp);
 	return send_response(p, &resp, XMIT_UNRELIABLE, 0);
 }
 
@@ -4636,7 +4623,6 @@ static int transmit_response_with_allow(struct sip_pvt *p, char *msg, struct sip
 	respprep(&resp, p, msg, req);
 	add_header(&resp, "Accept", "application/sdp");
 	add_header_contentLength(&resp, 0);
-	add_blank_header(&resp);
 	return send_response(p, &resp, reliable, 0);
 }
 
@@ -4657,7 +4643,6 @@ static int transmit_response_with_auth(struct sip_pvt *p, const char *msg, struc
 	respprep(&resp, p, msg, req);
 	add_header(&resp, header, tmp);
 	add_header_contentLength(&resp, 0);
-	add_blank_header(&resp);
 	return send_response(p, &resp, reliable, seqno);
 }
 
@@ -4985,50 +4970,41 @@ static int transmit_response_with_sdp(struct sip_pvt *p, char *msg, struct sip_r
 }
 
 /*! \brief Parse first line of incoming SIP request */
-static int determine_firstline_parts( struct sip_request *req ) 
+static int determine_firstline_parts(struct sip_request *req) 
 {
-	char *e, *cmd;
-	int len;
-  
-	cmd = ast_skip_blanks(req->header[0]);
-	if (!*cmd)
+	char *e = ast_skip_blanks(req->header[0]);	/* there shouldn't be any */
+
+	if (!*e)
 		return -1;
-	req->rlPart1 = cmd;
-	e = ast_skip_nonblanks(cmd);
-	/* Get the command */
+	req->rlPart1 = e;	/* method or protocol */
+	e = ast_skip_nonblanks(e);
 	if (*e)
 		*e++ = '\0';
+	/* Get URI or status code */
 	e = ast_skip_blanks(e);
 	if ( !*e )
 		return -1;
+	ast_trim_blanks(e);
 
-	if ( !strcasecmp(cmd, "SIP/2.0") ) {
-		/* We have a response */
-		req->rlPart2 = e;
-		len = strlen( req->rlPart2 );
-		if ( len < 2 ) { 
+	if (!strcasecmp(req->rlPart1, "SIP/2.0") ) { /* We have a response */
+		if (strlen(e) < 3)	/* status code is 3 digits */
 			return -1;
-		}
-		ast_trim_blanks(e);
-	} else {
-		/* We have a request */
-		if ( *e == '<' ) { 
+		req->rlPart2 = e;
+	} else { /* We have a request */
+		if ( *e == '<' ) { /* XXX the spec says it must not be in <> ! */
+			ast_log(LOG_WARNING, "bogus uri in <> %s\n", e);
 			e++;
-			if ( !*e ) { 
+			if (!*e)
 				return -1; 
-			}  
 		}
 		req->rlPart2 = e;	/* URI */
-		if ( ( e= strrchr( req->rlPart2, 'S' ) ) == NULL ) {
+		e = ast_skip_nonblanks(e);
+		if (*e)
+			*e++ = '\0';
+		e = ast_skip_blanks(e);
+		if (strcasecmp(e, "SIP/2.0") ) {
+			ast_log(LOG_WARNING, "Bad request protocol %s\n", e);
 			return -1;
-		}
-		/* XXX maybe trim_blanks() ? */
-		while( isspace( *(--e) ) )
-			;
-		if ( *e == '>' ) {
-			*e = '\0';
-		} else {
-			*(++e)= '\0';
 		}
 	}
 	return 1;
@@ -5395,7 +5371,6 @@ static int transmit_invite(struct sip_pvt *p, int sipmethod, int sdp, int init)
 		add_sdp(&req, p);
 	} else {
 		add_header_contentLength(&req, 0);
-		add_blank_header(&req);
 	}
 
 	if (!p->initreq.headers)
@@ -5915,7 +5890,6 @@ static int transmit_register(struct sip_registry *r, int sipmethod, char *auth, 
 	add_header(&req, "Contact", p->our_contact);
 	add_header(&req, "Event", "registration");
 	add_header_contentLength(&req, 0);
-	add_blank_header(&req);
 
 	initialize_initreq(p, &req);
 	if (sip_debug_test_pvt(p))
@@ -6000,7 +5974,6 @@ static int transmit_refer(struct sip_pvt *p, const char *dest)
 	add_header(&req, "Supported", SUPPORTED_EXTENSIONS);
 	if (!ast_strlen_zero(p->our_contact))
 		add_header(&req, "Referred-By", p->our_contact);
-	add_blank_header(&req);
 
 	return send_request(p, &req, 1, p->ocseq);
 	/* We should propably wait for a NOTIFY here until we ack the transfer */
@@ -6038,7 +6011,6 @@ static int transmit_request(struct sip_pvt *p, int sipmethod, int seqno, enum xm
 	struct sip_request resp;
 	reqprep(&resp, p, sipmethod, seqno, newbranch);
 	add_header_contentLength(&resp, 0);
-	add_blank_header(&resp);
 	return send_request(p, &resp, reliable, seqno ? seqno : p->ocseq);
 }
 
@@ -6073,7 +6045,6 @@ static int transmit_request_with_auth(struct sip_pvt *p, int sipmethod, int seqn
 	}
 
 	add_header_contentLength(&resp, 0);
-	add_blank_header(&resp);
 	return send_request(p, &resp, reliable, seqno ? seqno : p->ocseq);	
 }
 
@@ -9315,7 +9286,6 @@ static int sip_notify(int fd, int argc, char *argv[])
 		for (var = varlist; var; var = var->next)
 			add_header(&req, var->name, var->value);
 
-		add_blank_header(&req);
 		/* Recalculate our side, and recalculate Call ID */
 		if (ast_sip_ouraddrfor(&p->sa.sin_addr, &p->ourip))
 			p->ourip = __ourip;
