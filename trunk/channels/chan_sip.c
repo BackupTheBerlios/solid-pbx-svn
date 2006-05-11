@@ -1173,7 +1173,6 @@ static int find_sip_method(const char *msg);
 static unsigned int parse_sip_options(struct sip_pvt *pvt, const char *supported);
 static void parse_request(struct sip_request *req);
 static const char *get_header(const struct sip_request *req, const char *name);
-static void copy_request(struct sip_request *dst,struct sip_request *src);
 static char *referstatus2str(enum referstatus rstatus);
 static int method_match(enum sipmethod id, const char *name);
 static void parse_copy(struct sip_request *dst, struct sip_request *src);
@@ -1310,7 +1309,7 @@ static void initialize_initreq(struct sip_pvt *p, struct sip_request *req)
  * matches the sip method 'id'.
  * Strictly speaking, SIP methods are case SENSITIVE, but we do
  * a case-insensitive comparison to be more tolerant.
- * following Jon Postel's rule: Be gentle in what you accept, strict with what you send 
+ * following Jon Postel's rule: Be gentle in what you accept, strict with what you send
  */
 static int method_match(enum sipmethod id, const char *name)
 {
