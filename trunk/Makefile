@@ -191,7 +191,7 @@ OTHER_SUBDIR_CFLAGS=-include ../include/autoconfig.h -I../include -I..
 
 #   *CLI> show memory allocations [filename]
 #   *CLI> show memory summary [filename]
-ifneq ($(findstring -DMALLOC_DEBUG,$(ASTCFLAGS)),)
+ifneq ($(findstring MALLOC_DEBUG,$(MENUSELECT_CFLAGS)),)
   TOPDIR_CFLAGS+=-include include/asterisk/astmm.h
   MOD_SUBDIR_CFLAGS+=-include ../include/asterisk/astmm.h
 endif
@@ -990,7 +990,7 @@ uninstall-all: _uninstall
 menuselect: build_tools/menuselect makeopts.xml
 	-@build_tools/menuselect ${GLOBAL_MAKEOPTS} ${USER_MAKEOPTS} menuselect.makeopts && echo "menuselect changes saved!" || echo "menuselect changes NOT saved!"
 
-build_tools/menuselect: build_tools/menuselect.c build_tools/menuselect_curses.c build_tools/menuselect.h include/autoconfig.h mxml/libmxml.a $(MENUSELECT_OBJS)
+build_tools/menuselect: build_tools/menuselect.c build_tools/menuselect_curses.c build_tools/menuselect.h config.status mxml/libmxml.a $(MENUSELECT_OBJS)
 	$(MAKE) -C build_tools menuselect
 
 mxml/libmxml.a:
