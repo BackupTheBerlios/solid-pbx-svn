@@ -1738,27 +1738,20 @@ static int __sip_ack(struct sip_pvt *p, int seqno, int resp, int sipmethod, int 
 }
 
 /*! \brief Pretend to ack all packets */
+/* maybe the lock on p is not strictly necessary but there might be a race */
 static int __sip_pretend_ack(struct sip_pvt *p)
 {
 	struct sip_pkt *cur = NULL;
 
 	while (p->packets) {
+		int method;
 		if (cur == p->packets) {
 			ast_log(LOG_WARNING, "Have a packet that doesn't want to give up! %s\n", sip_methods[cur->method].text);
 			return -1;
 		}
 		cur = p->packets;
-		if (cur->method)
-			__sip_ack(p, p->packets->seqno, (ast_test_flag(p->packets, FLAG_RESPONSE)), cur->method, FALSE);
-		else {	/* Unknown packet type */
-			char *c;
-			char method[128];
-
-			ast_copy_string(method, p->packets->data, sizeof(method));
-			c = ast_skip_blanks(method); /* XXX what ? */
-			*c = '\0';
-			__sip_ack(p, p->packets->seqno, (ast_test_flag(p->packets, FLAG_RESPONSE)), find_sip_method(method), FALSE);
-		}
+		method = (cur->method) ? cur->method : find_sip_method(cur->data);
+		__sip_ack(p, cur->seqno, ast_test_flag(cur, FLAG_RESPONSE), method, FALSE);
 	}
 	return 0;
 }
@@ -6814,6 +6807,9 @@ static int register_verify(struct sip_pvt *p, struct sockaddr_in *sin, struct si
 				switch (parse_register_contact(p, peer, req)) {
 				case PARSE_REGISTER_FAILED:
 					ast_log(LOG_WARNING, "Failed to parse contact info\n");
+					transmit_response_with_date(p, "400 Bad Request", req);
+					peer->lastmsgssent = -1;
+					res = 0;
 					break;
 				case PARSE_REGISTER_QUERY:
 					transmit_response_with_date(p, "200 OK", req);
@@ -6837,11 +6833,13 @@ static int register_verify(struct sip_pvt *p, struct sockaddr_in *sin, struct si
 		peer = temp_peer(name);
 		if (peer) {
 			ASTOBJ_CONTAINER_LINK(&peerl, peer);
-			peer->lastmsgssent = -1;
 			sip_cancel_destroy(p);
 			switch (parse_register_contact(p, peer, req)) {
 			case PARSE_REGISTER_FAILED:
 				ast_log(LOG_WARNING, "Failed to parse contact info\n");
+				transmit_response_with_date(p, "400 Bad Request", req);
+				peer->lastmsgssent = -1;
+				res = 0;
 				break;
 			case PARSE_REGISTER_QUERY:
 				transmit_response_with_date(p, "200 OK", req);
@@ -11436,6 +11434,14 @@ static int handle_request_cancel(struct sip_pvt *p, struct sip_request *req)
 		
 	check_via(p, req);
 	ast_set_flag(&p->flags[0], SIP_ALREADYGONE);	
+	
+	if (p->owner && p->owner->_state == AST_STATE_UP) {
+		/* This call is up, cancel is ignored, we need a bye */
+		transmit_response(p, "200 OK", req);
+		if (option_debug)
+			ast_log(LOG_DEBUG, "Got CANCEL on an answered call. Ignoring... \n");
+		return 0;
+	}
 	if (p->rtp) {
 		/* Immediately stop RTP */
 		ast_rtp_stop(p->rtp);
