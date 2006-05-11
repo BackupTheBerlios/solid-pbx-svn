@@ -950,7 +950,7 @@ static struct ast_exten *pbx_find_extension(struct ast_channel *chan,
 		int match = extension_match_core(eroot->exten, exten, action);
 		/* 0 on fail, 1 on match, 2 on earlymatch */
 
-		if (!match || (eroot->matchcid && matchcid(eroot->cidmatch, callerid)))
+		if (!match || (eroot->matchcid && !matchcid(eroot->cidmatch, callerid)))
 			continue;	/* keep trying */
 		if (match == 2 && action == E_MATCHMORE) {
 			/* We match an extension ending in '!'.
@@ -3465,14 +3465,12 @@ AST_LIST_HEAD(store_hints, store_hint);
 void ast_merge_contexts_and_delete(struct ast_context **extcontexts, const char *registrar)
 {
 	struct ast_context *tmp, *lasttmp = NULL;
-	struct store_hints store;
+	struct store_hints store = AST_LIST_HEAD_INIT_VALUE;
 	struct store_hint *this;
 	struct ast_hint *hint;
 	struct ast_exten *exten;
 	int length;
 	struct ast_state_cb *thiscb, *prevcb;
-
-	AST_LIST_HEAD_INIT(&store);
 
 	/* it is very important that this function hold the hint list lock _and_ the conlock
 	   during its operation; not only do we need to ensure that the list of contexts
