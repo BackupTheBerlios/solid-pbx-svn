@@ -1024,7 +1024,7 @@ static struct sockaddr_in outboundproxyip;
 static int ourport;
 static struct sockaddr_in debugaddr;
 
-struct ast_config *notify_types;		/*!< The list of manual NOTIFY types we know how to send */
+static struct ast_config *notify_types;		/*!< The list of manual NOTIFY types we know how to send */
 
 /*---------------------------- Forward declarations of functions in chan_sip.c */
 /*! \note Sorted up from start to build_rpid.... Will continue categorization in order to
@@ -1188,7 +1188,7 @@ static void extract_uri(struct sip_pvt *p, struct sip_request *req);
 static void initialize_initreq(struct sip_pvt *p, struct sip_request *req);
 static int init_req(struct sip_request *req, int sipmethod, const char *recip);
 static int reqprep(struct sip_request *req, struct sip_pvt *p, int sipmethod, int seqno, int newbranch);
-static int init_resp(struct sip_request *req, const char *resp, struct sip_request *orig);
+static int init_resp(struct sip_request *resp, const char *msg);
 static int respprep(struct sip_request *resp, struct sip_pvt *p, const char *msg, struct sip_request *req);
 static const struct sockaddr_in *sip_real_dst(const struct sip_pvt *p);
 static void build_via(struct sip_pvt *p);
@@ -1258,6 +1258,15 @@ static const struct ast_channel_tech sip_tech = {
 	.bridge = ast_rtp_bridge,
 	.send_text = sip_sendtext,
 };
+
+/**--- some list management macros. **/
+ 
+#define UNLINK(element, head, prev) do {	\
+	if (prev)				\
+		(prev)->next = (element)->next;	\
+	else					\
+		(head) = (element)->next;	\
+	} while (0)
 
 /*! \brief Interface structure with callbacks used to connect to RTP module */
 static struct ast_rtp_protocol sip_rtp = {
@@ -1716,10 +1725,7 @@ static int __sip_ack(struct sip_pvt *p, int seqno, int resp, int sipmethod, int 
 				p->pendinginvite = 0;
 			}
 			/* this is our baby */
-			if (prev)
-				prev->next = cur->next;
-			else
-				p->packets = cur->next;
+			UNLINK(cur, p->packets, prev);
 			if (cur->retransid > -1) {
 				if (sipdebug && option_debug > 3)
 					ast_log(LOG_DEBUG, "** SIP TIMER: Cancelling retransmit of packet (reply received) Retransid #%d\n", cur->retransid);
@@ -2487,10 +2493,7 @@ static void __sip_destroy(struct sip_pvt *p, int lockowner)
 
 	for (prev = NULL, cur = iflist; cur; prev = cur, cur = cur->next) {
 		if (cur == p) {
-			if (prev)
-				prev->next = cur->next;
-			else
-				iflist = cur->next;
+			UNLINK(cur, iflist, prev);
 			break;
 		}
 	}
@@ -4108,6 +4111,8 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 /*! \brief Add header to SIP message */
 static int add_header(struct sip_request *req, const char *var, const char *value)
 {
+	int maxlen = sizeof(req->data) - 4 - req->len; /* 4 bytes are for two \r\n ? */
+
 	if (req->headers == SIP_MAX_HEADERS) {
 		ast_log(LOG_WARNING, "Out of SIP header space\n");
 		return -1;
@@ -4118,7 +4123,7 @@ static int add_header(struct sip_request *req, const char *var, const char *valu
 		return -1;
 	}
 
-	if (req->len >= sizeof(req->data) - 4) {
+	if (maxlen <= 0) {
 		ast_log(LOG_WARNING, "Out of space, can't add anymore (%s:%s)\n", var, value);
 		return -1;
 	}
@@ -4128,7 +4133,7 @@ static int add_header(struct sip_request *req, const char *var, const char *valu
 	if (compactheaders)
 		var = find_alias(var, var);
 
-	snprintf(req->header[req->headers], sizeof(req->data) - req->len - 4, "%s: %s\r\n", var, value);
+	snprintf(req->header[req->headers], maxlen, "%s: %s\r\n", var, value);
 	req->len += strlen(req->header[req->headers]);
 	req->headers++;
 
@@ -4378,34 +4383,28 @@ static void set_destination(struct sip_pvt *p, char *uri)
 }
 
 /*! \brief Initialize SIP response, based on SIP request */
-static int init_resp(struct sip_request *req, const char *resp, struct sip_request *orig)
+static int init_resp(struct sip_request *resp, const char *msg)
 {
 	/* Initialize a response */
-	if (req->headers || req->len) {
-		ast_log(LOG_WARNING, "Request already initialized?!?\n");
-		return -1;
-	}
-	req->method = SIP_RESPONSE;
-	req->header[req->headers] = req->data + req->len;
-	snprintf(req->header[req->headers], sizeof(req->data) - req->len, "SIP/2.0 %s\r\n", resp);
-	req->len += strlen(req->header[req->headers]);
-	req->headers++;
+	memset(resp, 0, sizeof(*resp));
+	resp->method = SIP_RESPONSE;
+	resp->header[0] = resp->data;
+	snprintf(resp->header[0], sizeof(resp->data), "SIP/2.0 %s\r\n", msg);
+	resp->len = strlen(resp->header[0]);
+	resp->headers++;
 	return 0;
 }
 
 /*! \brief Initialize SIP request */
 static int init_req(struct sip_request *req, int sipmethod, const char *recip)
 {
-	/* Initialize a response */
-	if (req->headers || req->len) {
-		ast_log(LOG_WARNING, "Request already initialized?!?\n");
-		return -1;
-	}
-	req->header[req->headers] = req->data + req->len;
-	snprintf(req->header[req->headers], sizeof(req->data) - req->len, "%s %s SIP/2.0\r\n", sip_methods[sipmethod].text, recip);
-	req->len += strlen(req->header[req->headers]);
+	/* Initialize a request */
+	memset(req, 0, sizeof(*req));
+        req->method = sipmethod;
+	req->header[0] = req->data;
+	snprintf(req->header[0], sizeof(req->data), "%s %s SIP/2.0\r\n", sip_methods[sipmethod].text, recip);
+	req->len = strlen(req->header[0]);
 	req->headers++;
-	req->method = sipmethod;
 	return 0;
 }
 
@@ -4416,8 +4415,7 @@ static int respprep(struct sip_request *resp, struct sip_pvt *p, const char *msg
 	char newto[256];
 	const char *ot;
 
-	memset(resp, 0, sizeof(*resp));
-	init_resp(resp, msg, req);
+	init_resp(resp, msg);
 	copy_via_headers(p, resp, req, "Via");
 	if (msg[0] == '2')
 		copy_all_header(resp, req, "Record-Route");
@@ -5287,7 +5285,6 @@ static void initreqprep(struct sip_request *req, struct sip_pvt *p, int sipmetho
 		snprintf(to, sizeof(to), "<%s>", p->uri);
 	}
 	
-	memset(req, 0, sizeof(struct sip_request));
 	init_req(req, sipmethod, p->uri);
 	snprintf(tmp, sizeof(tmp), "%d %s", ++p->ocseq, sip_methods[sipmethod].text);
 
@@ -5875,7 +5872,6 @@ static int transmit_register(struct sip_registry *r, int sipmethod, char *auth, 
 
 	p->branch ^= ast_random();
 
-	memset(&req, 0, sizeof(req));
 	init_req(&req, sipmethod, addr);
 
 	/* Add to CSEQ */
