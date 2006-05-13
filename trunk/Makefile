@@ -24,18 +24,6 @@ OPTIONS=
 #CROSS_PROC=arm
 #SUB_PROC=xscale # or maverick
 
-# Pentium Pro Optimize
-#PROC=i686
-
-# Pentium & VIA processors optimize
-#PROC=i586
-
-#PROC=k6
-#PROC=ppc
-
-CC=$(CROSS_COMPILE)gcc
-HOST_CC=gcc
-
 ifeq ($(CROSS_COMPILE),)
   OSARCH=$(shell uname -s)
   PROC?=$(shell uname -m)
@@ -70,26 +58,6 @@ OVERWRITE=y
 
 # Include debug and macro symbols in the executables (-g) and profiling info (-pg)
 DEBUG=-g3
-
-# Set NOCRYPTO to yes if you do not want to have crypto support or dependencies
-#NOCRYPTO=yes
-
-# If you are running a radio application, define RADIO_RELAX so that the DTMF
-# will be received more reliably
-#OPTIONS += -DRADIO_RELAX
-
-# If you don't have a lot of memory (e.g. embedded Asterisk), define LOW_MEMORY
-# to reduce the size of certain static buffers
-#ifneq ($(CROSS_COMPILE),)
-#OPTIONS += -DLOW_MEMORY
-#endif
-
-# Asterisk SMDI integration
-WITH_SMDI=1
-
-# Where to install asterisk after compiling
-# Default -> leave empty
-INSTALL_PREFIX?=
 
 # Staging directory
 # Files are copied here temporarily during the install process
@@ -241,7 +209,7 @@ ifeq ($(OSARCH),SunOS)
   ID=/usr/xpg4/bin/id
 endif
 
-ASTCFLAGS+=-pipe  -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations $(DEBUG) $(INCLUDE)
+ASTCFLAGS+=-pipe -Wall -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations $(DEBUG)
 ASTCFLAGS+=$(OPTIMIZE)
 
 ifeq ($(AST_DEVMODE),yes)
@@ -276,8 +244,7 @@ ifeq ($(OSARCH),FreeBSD)
 endif # FreeBSD
 
 ifeq ($(OSARCH),NetBSD)
-  ASTCFLAGS+=-pthread
-  INCLUDE+=-I$(CROSS_COMPILE_TARGET)/usr/pkg/include
+  AST_CFLAGS+=-pthread -I$(CROSS_COMPILE_TARGET)/usr/pkg/include
   MPG123TARG=netbsd
 endif
 
@@ -286,8 +253,7 @@ ifeq ($(OSARCH),OpenBSD)
 endif
 
 ifeq ($(OSARCH),SunOS)
-  ASTCFLAGS+=-Wcast-align -DSOLARIS
-  INCLUDE+=-Iinclude/solaris-compat -I$(CROSS_COMPILE_TARGET)/usr/local/ssl/include
+  ASTCFLAGS+=-Wcast-align -DSOLARIS -Iinclude/solaris-compat -I$(CROSS_COMPILE_TARGET)/usr/local/ssl/include
 endif
 
 LIBEDIT=editline/libedit.a
@@ -314,7 +280,7 @@ endif
 
 ASTCFLAGS+=$(MALLOC_DEBUG)$(BUSYDETECT)$(OPTIONS)
 ifeq ($(findstring dont-optimize,$(MAKECMDGOALS)),)
-ASTCFLAGS+=-fomit-frame-pointer 
+ASTCFLAGS+=-fomit-frame-pointer
 endif
 
 MOD_SUBDIRS=res channels pbx apps codecs formats cdr funcs
@@ -396,7 +362,7 @@ ifeq ($(OSARCH),SunOS)
 endif
 
 ifeq ($(MAKETOPLEVEL),$(MAKELEVEL))
-  CFLAGS+=$(TOPDIR_CFLAGS) $(ASTCFLAGS)
+  CFLAGS+=$(TOPDIR_CFLAGS)$(ASTCFLAGS)
 endif
 
 # This is used when generating the doxygen documentation
@@ -518,7 +484,7 @@ include/asterisk/buildopts.h: menuselect.makeopts
 	@rm -f $@.tmp
 
 stdtime/libtime.a:
-	CFLAGS="$(MOD_SUBDIR_CFLAGS) $(ASTCFLAGS)" $(MAKE) -C stdtime libtime.a
+	CFLAGS="$(MOD_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C stdtime libtime.a
 
 asterisk: include/asterisk/buildopts.h editline/libedit.a db1-ast/libdb1.a stdtime/libtime.a $(OBJS)
 	build_tools/make_build_h > include/asterisk/build.h.tmp
@@ -533,9 +499,9 @@ muted: muted.o
 	$(CC) $(AUDIO_LIBS) -o muted muted.o
 
 subdirs: 
-	@for x in $(MOD_SUBDIRS); do CFLAGS="$(MOD_SUBDIR_CFLAGS) $(ASTCFLAGS)" $(MAKE) -C $$x || exit 1 ; done
-	@CFLAGS="$(OTHER_SUBDIR_CFLAGS) $(ASTCFLAGS)" $(MAKE) -C utils
-	@CFLAGS="$(OTHER_SUBDIR_CFLAGS) $(ASTCFLAGS)" $(MAKE) -C agi
+	@for x in $(MOD_SUBDIRS); do CFLAGS="$(MOD_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C $$x || exit 1 ; done
+	@CFLAGS="$(OTHER_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C utils
+	@CFLAGS="$(OTHER_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C agi
 
 clean-depend:
 	@for x in $(SUBDIRS); do $(MAKE) -C $$x clean-depend || exit 1 ; done
