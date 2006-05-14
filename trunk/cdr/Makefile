@@ -82,4 +82,4 @@ endif
 depend: .depend
 
 .depend:
-	../build_tools/mkdep $(CFLAGS) `ls *.c`
+	../build_tools/mkdep $(MOD_SUBDIR_CFLAGS) `ls *.c`
