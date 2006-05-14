@@ -341,9 +341,6 @@ AC_SUBST([pq_INCLUDE])
 AC_SUBST([pq_LIB])
 AC_SUBST([PBX_LIBpq])
 
-AC_CHECK_HEADER([h323.h], [PBX_H323=1], [PBX_H323=0])
-AC_SUBST(PBX_H323)
-
 AC_CHECK_HEADER([linux/ixjuser.h], [PBX_IXJUSER=1], [PBX_IXJUSER=0], [
 				   #include <linux/version.h>
 				   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
@@ -580,64 +577,6 @@ fi
 AC_SUBST(PBX_GTK)
 AC_SUBST(GTK_INCLUDE)
 AC_SUBST(GTK_LIBS)
-
-PLATFORM_PTLIB="ptlib_${OSTYPE}_${MACHTYPE}_r"
-
-AC_ARG_WITH([pwlib], AC_HELP_STRING([--with-pwlib=PATH],[use PWLib files in PATH]),[
-case ${withval} in
-     n|no)
-     USE_PWLIB=no
-     ;;
-     y|ye|yes)
-     ;;
-     *)
-     PWLIB_DIR="${withval}"
-     ;;
-esac
-])
-if test "${USE_PWLIB}" != "no"; then
-	echo -n "checking for existence of pwlib... "
-	
-	saved_ldflags="${LDFLAGS}"
-	LDFLAGS="${LDFLAGS} -L${PWLIB_DIR} -l${PLATFORM_PTLIB}"
-	
-	AC_LINK_IFELSE(
-	[
-	AC_LANG_PROGRAM(
-	[#include "${PWDIR_DIR}ptime.h"],
-	[int q = PTime::IsDaylightSaving();])
-	],
-	[	AC_MSG_RESULT(yes) 
-		ac_cv_lib_pwlib="yes" 
-	],
-	[	AC_MSG_RESULT(no) 
-		ac_cv_lib_pwlib="no" 
-	]
-	)
-	LDFLAGS="${saved_ldflags}"
-
-	PBX_LIBPWLIB=0
-   
-   if test "${ac_cv_lib_pwlib}" = "yes"; then
-      PWLIB_LIB="-l{PLATFORM_PWLIB}"
-      if test "${PWLIB_DIR}" != ""; then
-         PWLIB_LIB="-L${PWLIB_DIR}/lib ${PWLIB_LIB}"
-	 		PWLIB_INCLUDE="-I${PWLIB_DIR}/include"
-	 		AC_SUBST([PWLIB_INCLUDE])
-      fi
-   	AC_SUBST([PWLIB_LIB])
-   	PBX_LIBPWLIB=1
-   	AC_DEFINE([HAVE_LIBPWLIB], 1, [Define if your system has the pwlib libraries.])
-   elif test ! -z "${PWLIB_DIR}"; 
-   then
-      echo "***"
-      echo "*** The PWLIB installation on this system appears to be broken."
-      echo "*** Either correct the installation, or run configure"
-      echo "*** including --without-pwlib"
-      exit 1
-   fi
-fi
-AC_SUBST([PBX_LIBPWLIB])
 
 PBX_CURL=0
 AC_PATH_TOOL([CURL], [curl-config], No)
