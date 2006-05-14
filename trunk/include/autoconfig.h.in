@@ -130,9 +130,6 @@
 /* Define to indicate the ISDN PRI library */
 #undef HAVE_LIBPRI
 
-/* Define if your system has the pwlib libraries. */
-#undef HAVE_LIBPWLIB
-
 /* Define if your system has the Qt library */
 #undef HAVE_LIBQT
 
