@@ -14,7 +14,7 @@
 #
 # Don't use ast mm routines
 #
-UTILS:=astman smsq stereorize streamplayer aelparse
+UTILS:=astman smsq stereorize streamplayer #aelparse
 
 ifeq (${OSARCH},SunOS)
   SOL=../strcompat.o
