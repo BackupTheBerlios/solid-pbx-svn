@@ -969,4 +969,4 @@ makeopts.xml: $(foreach dir,$(MOD_SUBDIRS),$(dir)/*.c) build_tools/cflags.xml
 
 release:
 	cp -ar . ../solid-pbx-$(ASTERISKVERSION)
-	cd ../solid-pbx-$(ASTERISKVERSION) && rm -rf `ls -Rd .svn */.svn */*/.svn */*/*/.svn */*/*/*/.svn`
+	cd ../solid-pbx-$(ASTERISKVERSION) && rm -rf `ls -Rd .svn */.svn */*/.svn */*/*/.svn */*/*/*/.svn` sounds
