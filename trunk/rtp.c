@@ -86,6 +86,7 @@ struct rtpPayloadType {
 #define FLAG_NAT_ACTIVE			(3 << 1)
 #define FLAG_NAT_INACTIVE		(0 << 1)
 #define FLAG_NAT_INACTIVE_NOWARN	(1 << 1)
+#define FLAG_HAS_DTMF			(1 << 3)
 
 /*! \brief RTP session description */
 struct ast_rtp {
@@ -328,7 +329,7 @@ void ast_rtp_stun_request(struct ast_rtp *rtp, struct sockaddr_in *suggestion, c
 	stun_send(rtp->s, suggestion, req);
 }
 
-static int stun_handle_packet(int s, struct sockaddr_in *src, unsigned char *data, int len)
+static int stun_handle_packet(int s, struct sockaddr_in *src, unsigned char *data, size_t len)
 {
 	struct stun_header *resp, *hdr = (struct stun_header *)data;
 	struct stun_attr *attr;
@@ -339,14 +340,14 @@ static int stun_handle_packet(int s, struct sockaddr_in *src, unsigned char *dat
 	
 	if (len < sizeof(struct stun_header)) {
 		if (option_debug)
-			ast_log(LOG_DEBUG, "Runt STUN packet (only %d, wanting at least %d)\n", len, sizeof(struct stun_header));
+			ast_log(LOG_DEBUG, "Runt STUN packet (only %zd, wanting at least %zd)\n", len, sizeof(struct stun_header));
 		return -1;
 	}
 	if (stundebug)
 		ast_verbose("STUN Packet, msg %s (%04x), length: %d\n", stun_msg2str(ntohs(hdr->msgtype)), ntohs(hdr->msgtype), ntohs(hdr->msglen));
 	if (ntohs(hdr->msglen) > len - sizeof(struct stun_header)) {
 		if (option_debug)
-			ast_log(LOG_DEBUG, "Scrambled STUN packet length (got %d, expecting %d)\n", ntohs(hdr->msglen), len - sizeof(struct stun_header));
+			ast_log(LOG_DEBUG, "Scrambled STUN packet length (got %d, expecting %zd)\n", ntohs(hdr->msglen), len - sizeof(struct stun_header));
 	} else
 		len = ntohs(hdr->msglen);
 	data += sizeof(struct stun_header);
@@ -354,13 +355,13 @@ static int stun_handle_packet(int s, struct sockaddr_in *src, unsigned char *dat
 	while(len) {
 		if (len < sizeof(struct stun_attr)) {
 			if (option_debug)
-				ast_log(LOG_DEBUG, "Runt Attribute (got %d, expecting %d)\n", len, sizeof(struct stun_attr));
+				ast_log(LOG_DEBUG, "Runt Attribute (got %zd, expecting %zd)\n", len, sizeof(struct stun_attr));
 			break;
 		}
 		attr = (struct stun_attr *)data;
 		if (ntohs(attr->len) > len) {
 			if (option_debug)
-				ast_log(LOG_DEBUG, "Inconsistant Attribute (length %d exceeds remaining msg len %d)\n", ntohs(attr->len), len);
+				ast_log(LOG_DEBUG, "Inconsistant Attribute (length %d exceeds remaining msg len %zd)\n", ntohs(attr->len), len);
 			break;
 		}
 		if (stun_process_attr(&st, attr)) {
@@ -432,6 +433,11 @@ void ast_rtp_set_callback(struct ast_rtp *rtp, ast_rtp_callback callback)
 void ast_rtp_setnat(struct ast_rtp *rtp, int nat)
 {
 	rtp->nat = nat;
+}
+
+void ast_rtp_setdtmf(struct ast_rtp *rtp, int dtmf)
+{
+	ast_set2_flag(rtp, dtmf ? 1 : 0, FLAG_HAS_DTMF);
 }
 
 static struct ast_frame *send_dtmf(struct ast_rtp *rtp)
@@ -1344,6 +1350,7 @@ struct ast_rtp *ast_rtp_new_with_bindaddr(struct sched_context *sched, struct io
 	rtp->s = rtp_socket();
 	rtp->ssrc = ast_random();
 	rtp->seqno = ast_random() & 0xffff;
+	ast_set_flag(rtp, FLAG_HAS_DTMF);
 	if (rtp->s < 0) {
 		free(rtp);
 		ast_log(LOG_ERROR, "Unable to allocate socket: %s\n", strerror(errno));
@@ -1921,10 +1928,6 @@ enum ast_bridge_result ast_rtp_bridge(struct ast_channel *c0, struct ast_channel
 	memset(&vac0, 0, sizeof(vac0));
 	memset(&vac1, 0, sizeof(vac1));
 
-	/* if need DTMF, cant native bridge */
-	if (flags & (AST_BRIDGE_DTMF_CHANNEL_0 | AST_BRIDGE_DTMF_CHANNEL_1))
-		return AST_BRIDGE_FAILED_NOWARN;
-
 	/* Lock channels */
 	ast_channel_lock(c0);
 	while(ast_channel_trylock(c1)) {
@@ -1966,6 +1969,25 @@ enum ast_bridge_result ast_rtp_bridge(struct ast_channel *c0, struct ast_channel
 		ast_channel_unlock(c1);
 		return AST_BRIDGE_FAILED_NOWARN;
 	}
+
+	if (ast_test_flag(p0, FLAG_HAS_DTMF) && (flags & AST_BRIDGE_DTMF_CHANNEL_0)) {
+		/* can't bridge, we are carrying DTMF for this channel and the bridge
+		   needs it
+		*/
+		ast_channel_unlock(c0);
+		ast_channel_unlock(c1);
+		return AST_BRIDGE_FAILED_NOWARN;
+	}
+
+	if (ast_test_flag(p1, FLAG_HAS_DTMF) && (flags & AST_BRIDGE_DTMF_CHANNEL_1)) {
+		/* can't bridge, we are carrying DTMF for this channel and the bridge
+		   needs it
+		*/
+		ast_channel_unlock(c0);
+		ast_channel_unlock(c1);
+		return AST_BRIDGE_FAILED_NOWARN;
+	}
+
 	/* Get codecs from both sides */
 	codec0 = pr0->get_codec ? pr0->get_codec(c0) : 0;
 	codec1 = pr1->get_codec ? pr1->get_codec(c1) : 0;
