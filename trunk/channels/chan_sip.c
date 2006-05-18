@@ -519,11 +519,13 @@ struct sip_request {
 	int len;		/*!< Length */
 	int headers;		/*!< # of SIP Headers */
 	int method;		/*!< Method of this request */
-	int lines;		/*!< SDP Content */
+	int lines;		/*!< Body Content */
 	unsigned int flags;	/*!< SIP_PKT Flags for this packet */
 	char *header[SIP_MAX_HEADERS];
 	char *line[SIP_MAX_LINES];
 	char data[SIP_MAX_PACKET];
+	unsigned int sdp_start; /*!< the line number where the SDP begins */
+	unsigned int sdp_end;	/*!< the line number where the SDP ends */
 };
 
 /*
@@ -636,21 +638,22 @@ struct sip_auth {
 #define SIP_NAT_ROUTE		(2 << 18)	/*!< NAT Only ROUTE */
 #define SIP_NAT_ALWAYS		(3 << 18)	/*!< NAT Both ROUTE and RFC3581 */
 /* re-INVITE related settings */
-#define SIP_REINVITE		(3 << 20)	/*!< two bits used */
+#define SIP_REINVITE		(7 << 20)	/*!< three bits used */
 #define SIP_CAN_REINVITE	(1 << 20)	/*!< allow peers to be reinvited to send media directly p2p */
-#define SIP_REINVITE_UPDATE	(2 << 20)	/*!< use UPDATE (RFC3311) when reinviting this peer */
+#define SIP_CAN_REINVITE_NAT	(2 << 20)	/*!< allow media reinvite when new peer is behind NAT */
+#define SIP_REINVITE_UPDATE	(4 << 20)	/*!< use UPDATE (RFC3311) when reinviting this peer */
 /* "insecure" settings */
-#define SIP_INSECURE_PORT	(1 << 22)	/*!< don't require matching port for incoming requests */
-#define SIP_INSECURE_INVITE	(1 << 23)	/*!< don't require authentication for incoming INVITEs */
+#define SIP_INSECURE_PORT	(1 << 23)	/*!< don't require matching port for incoming requests */
+#define SIP_INSECURE_INVITE	(1 << 24)	/*!< don't require authentication for incoming INVITEs */
 /* Sending PROGRESS in-band settings */
-#define SIP_PROG_INBAND		(3 << 24)	/*!< three settings, uses two bits */
-#define SIP_PROG_INBAND_NEVER	(0 << 24)
-#define SIP_PROG_INBAND_NO	(1 << 24)
-#define SIP_PROG_INBAND_YES	(2 << 24)
-#define SIP_CALL_ONHOLD		(1 << 26)	/*!< Call states */
-#define SIP_CALL_LIMIT		(1 << 27)	/*!< Call limit enforced for this call */
-#define SIP_SENDRPID		(1 << 28)	/*!< Remote Party-ID Support */
-#define SIP_INC_COUNT		(1 << 29)	/*!< Did this connection increment the counter of in-use calls? */
+#define SIP_PROG_INBAND		(3 << 25)	/*!< three settings, uses two bits */
+#define SIP_PROG_INBAND_NEVER	(0 << 25)
+#define SIP_PROG_INBAND_NO	(1 << 25)
+#define SIP_PROG_INBAND_YES	(2 << 25)
+#define SIP_CALL_ONHOLD		(1 << 27)	/*!< Call states */
+#define SIP_CALL_LIMIT		(1 << 28)	/*!< Call limit enforced for this call */
+#define SIP_SENDRPID		(1 << 29)	/*!< Remote Party-ID Support */
+#define SIP_INC_COUNT		(1 << 30)	/*!< Did this connection increment the counter of in-use calls? */
 
 #define SIP_FLAGS_TO_COPY \
 	(SIP_PROMISCREDIR | SIP_TRUSTRPID | SIP_SENDRPID | SIP_DTMF | SIP_REINVITE | \
@@ -1090,9 +1093,9 @@ static struct sip_pvt *find_call(struct sip_request *req, struct sockaddr_in *si
 
 /*--- Codec handling / SDP */
 static void try_suggested_sip_codec(struct sip_pvt *p);
-static const char *get_sdp_by_line(const char* line, const char *name, int nameLen);
 static const char* get_sdp_iterate(int* start, struct sip_request *req, const char *name);
 static const char *get_sdp(struct sip_request *req, const char *name);
+static int find_sdp(struct sip_request *req);
 static int process_sdp(struct sip_pvt *p, struct sip_request *req);
 static void add_codec_to_sdp(const struct sip_pvt *p, int codec, int sample_rate,
 			     char **m_buf, size_t *m_size, char **a_buf, size_t *a_size,
@@ -1942,17 +1945,30 @@ static void realtime_update_peer(const char *peername, struct sockaddr_in *sin, 
 static void register_peer_exten(struct sip_peer *peer, int onoff)
 {
 	char multi[256];
-	char *stringp, *ext;
+	char *stringp, *ext, *context;
 	if (!ast_strlen_zero(global_regcontext)) {
 
 		ast_copy_string(multi, S_OR(peer->regexten, peer->name), sizeof(multi));
 		stringp = multi;
 		while((ext = strsep(&stringp, "&"))) {
+ 			if((context = strchr(ext, '@'))) {
+				context++;
+				if (!ast_context_find(context)) {
+					ast_log(LOG_WARNING, "Context %s must exist in regcontext!\n", context);
+					continue;
+				}
+				ext = strsep(&ext, "@");
+				if (onoff)
+					ast_add_extension(context, 1, ext, 1, NULL, NULL, "Noop",					  ast_strdup(peer->name), free, "SIP");
+				else
+					ast_context_remove_extension(context, ext, 1, NULL);
+			} else {
 			if (onoff)
 				ast_add_extension(global_regcontext, 1, ext, 1, NULL, NULL, "Noop",
 						  ast_strdup(peer->name), free, "SIP");
 			else
 				ast_context_remove_extension(global_regcontext, ext, 1, NULL);
+			}
 		}
 	}
 }
@@ -3256,35 +3272,53 @@ static struct ast_channel *sip_new(struct sip_pvt *i, int state, const char *tit
 }
 
 /*! \brief Reads one line of SIP message body */
-static const char *get_sdp_by_line(const char* line, const char *name, int nameLen)
+static char *get_body_by_line(const char *line, const char *name, int nameLen)
 {
 	if (strncasecmp(line, name, nameLen) == 0 && line[nameLen] == '=')
 		return ast_skip_blanks(line + nameLen + 1);
+
 	return "";
 }
 
-/*! \brief get_sdp_iterate: lookup 'name' in the request starting
+/*! \brief Lookup 'name' in the SDP starting
  * at the 'start' line. Returns the matching line, and 'start'
  * is updated with the next line number.
  */
-static const char* get_sdp_iterate(int* start, struct sip_request *req, const char *name)
+static const char *get_sdp_iterate(int *start, struct sip_request *req, const char *name)
 {
 	int len = strlen(name);
 
-	while (*start < req->lines) {
-		const char *r = get_sdp_by_line(req->line[(*start)++], name, len);
+	while (*start < req->sdp_end) {
+		const char *r = get_body_by_line(req->line[(*start)++], name, len);
 		if (r[0] != '\0')
 			return r;
 	}
+
 	return "";
 }
 
-/*! \brief  get_sdp: Gets all kind of SIP message bodies, including SDP,
-   but the name wrongly applies _only_ sdp */
+/*! \brief Get a line from an SDP message body */
 static const char *get_sdp(struct sip_request *req, const char *name) 
 {
 	int dummy = 0;
+
 	return get_sdp_iterate(&dummy, req, name);
+}
+
+/*! \brief Get a specific line from the message body */
+static char *get_body(struct sip_request *req, char *name) 
+{
+	int x;
+	int len = strlen(name);
+	char *r;
+
+	for (x = 0; x < req->lines; x++) {
+		r = get_body_by_line(req->line[x], name, len);
+		if (r[0] != '\0')
+			return r;
+	}
+
+	return "";
 }
 
 /*! \brief Find compressed SIP alias */
@@ -3315,9 +3349,11 @@ static const char *find_alias(const char *name, const char *_default)
 		{ "Session-Expires",     "x" },
 	};
 	int x;
+
 	for (x=0; x<sizeof(aliases) / sizeof(aliases[0]); x++) 
 		if (!strcasecmp(aliases[x].fullname, name))
 			return aliases[x].shortname;
+
 	return _default;
 }
 
@@ -3846,7 +3882,69 @@ static void parse_request(struct sip_request *req)
 	determine_firstline_parts(req);
 }
 
-/*! \brief Process SIP SDP and activate RTP channels*/
+/*!
+  \brief Determine whether a SIP message contains an SDP in its body
+  \param req the SIP request to process
+  \return 1 if SDP found, 0 if not found
+
+  Also updates req->sdp_start and req->sdp_end to indicate where the SDP
+  lives in the message body.
+*/
+static int find_sdp(struct sip_request *req)
+{
+	const char *content_type;
+	const char *search;
+	char *boundary;
+	unsigned int x;
+
+	content_type = get_header(req, "Content-Type");
+
+	/* if the body contains only SDP, this is easy */
+	if (!strcasecmp(content_type, "application/sdp")) {
+		req->sdp_start = 0;
+		req->sdp_end = req->lines;
+		return 1;
+	}
+
+	/* if it's not multipart/mixed, there cannot be an SDP */
+	if (strncasecmp(content_type, "multipart/mixed", 15))
+		return 0;
+
+	/* if there is no boundary marker, it's invalid */
+	if (!(search = strcasestr(content_type, ";boundary=")))
+		return 0;
+
+	search += 10;
+
+	if (ast_strlen_zero(search))
+		return 0;
+
+	/* make a duplicate of the string, with two extra characters
+	   at the beginning */
+	boundary = ast_strdupa(search - 2);
+	boundary[0] = boundary[1] = '-';
+
+	/* search for the boundary marker, but stop when there are not enough
+	   lines left for it, the Content-Type header and at least one line of
+	   body */
+	for (x = 0; x < (req->lines - 2); x++) {
+		if (!strncasecmp(req->line[x], boundary, strlen(boundary)) &&
+		    !strcasecmp(req->line[x + 1], "Content-Type: application/sdp")) {
+			req->sdp_start = x + 2;
+			/* search for the end of the body part */
+			for ( ; x < req->lines; x++) {
+				if (!strncasecmp(req->line[x], boundary, strlen(boundary)))
+					break;
+			}
+			req->sdp_end = x;
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+/*! \brief Process SIP SDP and activate RTP channels---*/
 static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 {
 	const char *m;
@@ -3880,13 +3978,8 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	time(&p->lastrtprx);
 	time(&p->lastrtptx);
 
-	/* Get codec and RTP info from SDP */
-	if (strcasecmp(get_header(req, "Content-Type"), "application/sdp")) {
-		ast_log(LOG_NOTICE, "Content is '%s', not 'application/sdp'\n", get_header(req, "Content-Type"));
-		return -1;
-	}
 	m = get_sdp(req, "m");
-	destiterator = 0;
+	destiterator = req->sdp_start;
 	c = get_sdp_iterate(&destiterator, req, "c");
 	if (ast_strlen_zero(m) || ast_strlen_zero(c)) {
 		ast_log(LOG_WARNING, "Insufficient information for SDP (m = '%s', c = '%s')\n", m, c);
@@ -3902,7 +3995,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 		ast_log(LOG_WARNING, "Unable to lookup host in c= line, '%s'\n", c);
 		return -1;
 	}
-	iterator = 0;
+	iterator = req->sdp_start;
 	ast_set_flag(&p->flags[0], SIP_NOVIDEO);	
 	while ((m = get_sdp_iterate(&iterator, req, "m"))[0] != '\0') {
 		int found = 0;
@@ -4001,7 +4094,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	/* Next, scan through each "a=rtpmap:" line, noting each
 	 * specified RTP payload type (with corresponding MIME subtype):
 	 */
-	iterator = 0;
+	iterator = req->sdp_start;
 	while ((a = get_sdp_iterate(&iterator, req, "a"))[0] != '\0') {
 		char* mimeSubtype = ast_strdupa(a); /* ensures we have enough space */
 		if (!strcasecmp(a, "sendonly")) {
@@ -8105,6 +8198,32 @@ static const char *insecure2str(int port, int invite)
 		return "no";
 }
 
+/*! \brief cleanup_stale_contexts:  Destroy disused contexts between reloads
+	Only used in reload_config so the code for regcontext doesn't get ugly
+*/
+static void cleanup_stale_contexts(char *new, char *old)
+{
+	char *oldcontext, *newcontext, *stalecontext, *stringp, newlist[AST_MAX_CONTEXT];
+
+	while ((oldcontext = strsep(&old, "&"))) {
+		stalecontext = '\0';
+		ast_copy_string(newlist, new, sizeof(newlist));
+		stringp = newlist;
+		while ((newcontext = strsep(&stringp, "&"))) {
+			if (strcmp(newcontext, oldcontext) == 0) {
+				/* This is not the context you're looking for */
+				stalecontext = '\0';
+				break;
+			} else if (strcmp(newcontext, oldcontext)) {
+				stalecontext = oldcontext;
+			}
+			
+		}
+		if (stalecontext)
+			ast_context_destroy(ast_context_find(stalecontext), "SIP");
+	}
+}
+
 /*! \brief  sip_prune_realtime: Remove temporary realtime objects from memory (CLI) */
 static int sip_prune_realtime(int fd, int argc, char *argv[])
 {
@@ -9102,7 +9221,7 @@ static void handle_request_info(struct sip_pvt *p, struct sip_request *req)
 	    !strcasecmp(c, "application/vnd.nortelnetworks.digits")) {
 
 		/* Try getting the "signal=" part */
-		if (ast_strlen_zero(c = get_sdp(req, "Signal")) && ast_strlen_zero(c = get_sdp(req, "d"))) {
+		if (ast_strlen_zero(c = get_body(req, "Signal")) && ast_strlen_zero(c = get_body(req, "d"))) {
 			ast_log(LOG_WARNING, "Unable to retrieve DTMF signal from INFO message from %s\n", p->callid);
 			transmit_response(p, "200 OK", req); /* Should return error */
 			return;
@@ -9962,7 +10081,7 @@ static void handle_response_invite(struct sip_pvt *p, int resp, char *rest, stru
 			if (p->owner->_state != AST_STATE_UP)
 				ast_setstate(p->owner, AST_STATE_RINGING);
 		}
-		if (!strcasecmp(get_header(req, "Content-Type"), "application/sdp")) {
+		if (find_sdp(req)) {
 			process_sdp(p, req);
 			if (!ast_test_flag(req, SIP_PKT_IGNORE) && p->owner) {
 				/* Queue a progress frame only if we have SDP in 180 */
@@ -9974,7 +10093,7 @@ static void handle_response_invite(struct sip_pvt *p, int resp, char *rest, stru
 		if (!ast_test_flag(req, SIP_PKT_IGNORE))
 			sip_cancel_destroy(p);
 		/* Ignore 183 Session progress without SDP */
-		if (!strcasecmp(get_header(req, "Content-Type"), "application/sdp")) {
+		if (find_sdp(req)) {
 			process_sdp(p, req);
 			if (!ast_test_flag(req, SIP_PKT_IGNORE) && p->owner) {
 				/* Queue a progress frame */
@@ -9986,7 +10105,7 @@ static void handle_response_invite(struct sip_pvt *p, int resp, char *rest, stru
 		if (!ast_test_flag(req, SIP_PKT_IGNORE))
 			sip_cancel_destroy(p);
 		p->authtries = 0;
-		if (!strcasecmp(get_header(req, "Content-Type"), "application/sdp")) 
+		if (find_sdp(req))
 			process_sdp(p, req);
 
 		/* Parse contact header for continued conversation */
@@ -10554,7 +10673,7 @@ static void handle_response(struct sip_pvt *p, int resp, char *rest, struct sip_
 			} else if ((resp >= 100) && (resp < 200)) {
 				if (sipmethod == SIP_INVITE) {
 					sip_cancel_destroy(p);
-					if (!ast_strlen_zero(get_header(req, "Content-Type")))
+					if (find_sdp(req))
 						process_sdp(p, req);
 					if (p->owner) {
 						/* Queue a progress frame */
@@ -11115,7 +11234,7 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 			parse_ok_contact(p, req);
 		} else {	/* Re-invite on existing call */
 			/* Handle SDP here if we already have an owner */
-			if (!strcasecmp(get_header(req, "Content-Type"), "application/sdp")) {
+			if (find_sdp(req)) {
 				if (process_sdp(p, req)) {
 					transmit_response(p, "488 Not acceptable here", req);
 					if (!p->lastinvite)
@@ -11146,7 +11265,7 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 		}
 
 		/* We have a succesful authentication, process the SDP portion if there is one */
-		if (!strcasecmp(get_header(req, "Content-Type"), "application/sdp") ) {
+		if (find_sdp(req)) {
 			if (process_sdp(p, req)) {
 				/* Unacceptable codecs */
 				transmit_response_reliable(p, "488 Not acceptable here", req);
@@ -11946,7 +12065,7 @@ static int handle_request(struct sip_pvt *p, struct sip_request *req, struct soc
 		if (seqno == p->pendinginvite) {
 			p->pendinginvite = 0;
 			__sip_ack(p, seqno, FLAG_RESPONSE, 0, FALSE);
-			if (!ast_strlen_zero(get_header(req, "Content-Type"))) {
+			if (find_sdp(req)) {
 				if (process_sdp(p, req))
 					return -1;
 			} 
@@ -12573,10 +12692,24 @@ static int handle_common_options(struct ast_flags *flags, struct ast_flags *mask
 	} else if (!strcasecmp(v->name, "canreinvite")) {
 		ast_set_flag(&mask[0], SIP_REINVITE);
 		ast_clear_flag(&flags[0], SIP_REINVITE);
-		if (!strcasecmp(v->value, "update"))
-			ast_set_flag(&flags[0], SIP_REINVITE_UPDATE | SIP_CAN_REINVITE);
-		else
-			ast_set2_flag(&flags[0], ast_true(v->value), SIP_CAN_REINVITE);
+		if (ast_true(v->value)) {
+			ast_set_flag(&flags[0], SIP_CAN_REINVITE | SIP_CAN_REINVITE_NAT);
+		} else if (!ast_false(v->value)) {
+			char buf[64];
+			char *word, *next = buf;
+
+			ast_copy_string(buf, v->value, sizeof(buf));
+			while ((word = strsep(&next, ","))) {
+				if (!strcasecmp(word, "update")) {
+					ast_set_flag(&flags[0], SIP_REINVITE_UPDATE | SIP_CAN_REINVITE);
+				} else if (!strcasecmp(word, "nonat")) {
+					ast_set_flag(&flags[0], SIP_CAN_REINVITE);
+					ast_clear_flag(&flags[0], SIP_CAN_REINVITE_NAT);
+				} else {
+					ast_log(LOG_WARNING, "Unknown canreinvite mode '%s' on line %d\n", v->value, v->lineno);
+				}
+			}
+		}
 	} else if (!strcasecmp(v->name, "insecure")) {
 		ast_set_flag(&mask[0], SIP_INSECURE_PORT | SIP_INSECURE_INVITE);
 		ast_clear_flag(&flags[0], SIP_INSECURE_PORT | SIP_INSECURE_INVITE);
@@ -13197,7 +13330,8 @@ static int reload_config(enum channelreloadreason reason)
 	struct sip_peer *peer;
 	struct sip_user *user;
 	struct ast_hostent ahp;
-	char *cat;
+	char *cat, *stringp, *context, *oldregcontext;
+	char newcontexts[AST_MAX_CONTEXT], oldcontexts[AST_MAX_CONTEXT];
 	struct hostent *hp;
 	int format;
 	char iabuf[INET_ADDRSTRLEN];
@@ -13216,6 +13350,10 @@ static int reload_config(enum channelreloadreason reason)
 		return -1;
 	}
 	
+	/* Initialize copy of current global_regcontext for later use in removing stale contexts */
+	ast_copy_string(oldcontexts, global_regcontext, sizeof(oldcontexts));
+	oldregcontext = oldcontexts;
+
 	/* Clear all flags before setting default values */
 	/* Preserve debugging settings for console */
 	ast_copy_flags(&debugflag, &global_flags[1], SIP_PAGE2_DEBUG_CONSOLE);
@@ -13361,10 +13499,16 @@ static int reload_config(enum channelreloadreason reason)
 		} else if (!strcasecmp(v->name, "language")) {
 			ast_copy_string(default_language, v->value, sizeof(default_language));
 		} else if (!strcasecmp(v->name, "regcontext")) {
+			ast_copy_string(newcontexts, v->value, sizeof(newcontexts));
+			stringp = newcontexts;
+			/* Let's remove any contexts that are no longer defined in regcontext */
+			cleanup_stale_contexts(stringp, oldregcontext);
+			/* Create contexts if they don't exist already */
+			while ((context = strsep(&stringp, "&"))) {
+				if (!ast_context_find(context))
+					ast_context_create(NULL, context,"SIP");
+			}
 			ast_copy_string(global_regcontext, v->value, sizeof(global_regcontext));
-			/* Create context if it doesn't exist already */
-			if (!ast_context_find(global_regcontext))
-				ast_context_create(NULL, global_regcontext, "SIP");
 		} else if (!strcasecmp(v->name, "callerid")) {
 			ast_copy_string(default_callerid, v->value, sizeof(default_callerid));
 		} else if (!strcasecmp(v->name, "fromdomain")) {
@@ -13688,6 +13832,15 @@ static int sip_set_rtp_peer(struct ast_channel *chan, struct ast_rtp *rtp, struc
 		ast_mutex_unlock(&p->lock);
 		return 0;
 	}
+
+	/* if this peer cannot handle reinvites of the media stream to devices
+	   that are known to be behind a NAT, then stop the process now
+	*/
+	if (nat_active && !ast_test_flag(&p->flags[0], SIP_CAN_REINVITE_NAT)) {
+		ast_mutex_unlock(&p->lock);
+		return 0;
+	}
+
 	if (rtp) 
 		changed |= ast_rtp_get_peer(rtp, &p->redirip);
 	else
@@ -13702,8 +13855,8 @@ static int sip_set_rtp_peer(struct ast_channel *chan, struct ast_rtp *rtp, struc
 	}
 	if (changed && !ast_test_flag(&p->flags[0], SIP_GOTREFER)) {
 		if (chan->_state != AST_STATE_UP) {
-				char iabuf[INET_ADDRSTRLEN];
-				ast_log(LOG_DEBUG, "Early media setting SIP '%s' - Sending early media to %s\n", p->callid, ast_inet_ntoa(iabuf, sizeof(iabuf), rtp ? p->redirip.sin_addr : p->ourip));
+			char iabuf[INET_ADDRSTRLEN];
+			ast_log(LOG_DEBUG, "Early media setting SIP '%s' - Sending early media to %s\n", p->callid, ast_inet_ntoa(iabuf, sizeof(iabuf), rtp ? p->redirip.sin_addr : p->ourip));
 		} else if (!p->pendinginvite) {
 			if (option_debug > 2) {
 				char iabuf[INET_ADDRSTRLEN];
