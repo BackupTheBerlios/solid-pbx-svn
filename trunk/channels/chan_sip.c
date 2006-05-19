@@ -11702,14 +11702,19 @@ static int handle_request_subscribe(struct sip_pvt *p, struct sip_request *req, 
 		return 0;
 	}
 
-	/* Initialize the context if it hasn't been already */
+	/* Get destination right away */
+	gotdest = get_destination(p, NULL);
+
+	/* Initialize the context if it hasn't been already;
+	   note this is done _after_ handling any domain lookups,
+	   because the context specified there is for calls, not
+	   subscriptions
+	*/
 	if (!ast_strlen_zero(p->subscribecontext))
 		ast_string_field_set(p, context, p->subscribecontext);
 	else if (ast_strlen_zero(p->context))
 		ast_string_field_set(p, context, default_context);
 
-	/* Get destination right away */
-	gotdest = get_destination(p, NULL);
 	build_contact(p);
 	if (gotdest) {
 		transmit_response(p, "404 Not Found", req);
@@ -12193,7 +12198,7 @@ static int sip_send_mwi_to_peer(struct sip_peer *peer)
 	int newmsgs, oldmsgs;
 
 	/* Check for messages */
-	ast_app_messagecount(peer->mailbox, &newmsgs, &oldmsgs);
+	ast_app_inboxcount(peer->mailbox, &newmsgs, &oldmsgs);
 	
 	time(&peer->lastmsgcheck);
 	
