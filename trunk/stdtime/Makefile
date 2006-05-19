@@ -19,7 +19,7 @@ clean: clean-depend
 depend: .depend
 
 .depend:
-	../build_tools/mkdep $(MOD_SUBDIR_CFLAGS) *.c
+	../build_tools/mkdep $(CFLAGS) *.c
 
 test: test.c
 	${CC} ${CFLAGS} -o test test.c

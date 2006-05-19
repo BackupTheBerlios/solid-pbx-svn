@@ -49,4 +49,4 @@ endif
 depend: .depend
 
 .depend:
-	../build_tools/mkdep $(OTHER_SUBDIR_CFLAGS) `ls *.c`
+	../build_tools/mkdep $(CFLAGS) `ls *.c`
