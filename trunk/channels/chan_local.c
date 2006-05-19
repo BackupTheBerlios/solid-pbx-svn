@@ -60,6 +60,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/musiconhold.h"
 #include "asterisk/manager.h"
 #include "asterisk/stringfields.h"
+#include "asterisk/devicestate.h"
 
 static const char tdesc[] = "Local Proxy Channel Driver";
 
@@ -75,6 +76,7 @@ static int local_write(struct ast_channel *ast, struct ast_frame *f);
 static int local_indicate(struct ast_channel *ast, int condition, const void *data, size_t datalen);
 static int local_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 static int local_sendhtml(struct ast_channel *ast, int subclass, const char *data, int datalen);
+static int local_devicestate(void *data);
 
 /* PBX interface structure for channel registration */
 static const struct ast_channel_tech local_tech = {
@@ -88,10 +90,12 @@ static const struct ast_channel_tech local_tech = {
 	.answer = local_answer,
 	.read = local_read,
 	.write = local_write,
+	.write_video = local_write,
 	.exception = local_read,
 	.indicate = local_indicate,
 	.fixup = local_fixup,
 	.send_html = local_sendhtml,
+	.devicestate = local_devicestate,
 };
 
 struct local_pvt {
@@ -110,6 +114,28 @@ struct local_pvt {
 };
 
 static AST_LIST_HEAD_STATIC(locals, local_pvt);
+
+/*! \brief Adds devicestate to local channels */
+static int local_devicestate(void *data)
+{
+	char *exten;
+	char *context;
+
+	int res;
+		
+	exten = ast_strdupa(data);
+	if ((context  = strchr(exten, '@'))) {
+		*context = '\0';
+		context = context + 1;
+	}
+	if (option_debug > 2)
+		ast_log(LOG_DEBUG, "Checking if extension %s@%s exists (devicestate)\n", exten, context);
+	res = ast_exists_extension(NULL, context, exten, 1, NULL);
+	if (!res)
+		return AST_DEVICE_NOT_INUSE;
+	else
+		return AST_DEVICE_INUSE;
+}
 
 static int local_queue_frame(struct local_pvt *p, int isoutbound, struct ast_frame *f, struct ast_channel *us)
 {
@@ -231,12 +257,13 @@ static int local_write(struct ast_channel *ast, struct ast_frame *f)
 	/* Just queue for delivery to the other side */
 	ast_mutex_lock(&p->lock);
 	isoutbound = IS_OUTBOUND(ast, p);
-	if (f && (f->frametype == AST_FRAME_VOICE)) 
+	if (f && (f->frametype == AST_FRAME_VOICE || f->frametype == AST_FRAME_VIDEO))
 		check_bridge(p, isoutbound);
 	if (!p->alreadymasqed)
 		res = local_queue_frame(p, isoutbound, f, ast);
 	else {
-		ast_log(LOG_DEBUG, "Not posting to queue since already masked on '%s'\n", ast->name);
+		if (option_debug)
+			ast_log(LOG_DEBUG, "Not posting to queue since already masked on '%s'\n", ast->name);
 		res = 0;
 	}
 	ast_mutex_unlock(&p->lock);
