@@ -1213,13 +1213,16 @@ static int say_position(struct queue_ent *qe)
 		ast_verbose(VERBOSE_PREFIX_3 "Told %s in %s their queue position (which was %d)\n",
 			    qe->chan->name, qe->parent->name, qe->pos);
 	res = play_file(qe->chan, qe->parent->sound_thanks);
+	if (res && !valid_exit(qe, res))
+		res = 0;
 
  playout:
 	/* Set our last_pos indicators */
  	qe->last_pos = now;
 	qe->last_pos_said = qe->pos;
+
 	/* Don't restart music on hold if we're about to exit the caller from the queue */
-	if (res)
+	if (!res)
 		ast_moh_start(qe->chan, qe->moh);
 
 	return res;
@@ -1263,8 +1266,8 @@ static void leave_queue(struct queue_ent *qe)
 
 			/* Take us out of the queue */
 			manager_event(EVENT_FLAG_CALL, "Leave",
-				"Channel: %s\r\nQueue: %s\r\nCount: %d\r\n",
-				qe->chan->name, q->name,  q->count);
+				"Channel: %s\r\nQueue: %s\r\nCount: %d\r\nUniqueid: %s\r\n",
+				qe->chan->name, q->name,  q->count, qe->chan->uniqueid);
 			if (option_debug)
 				ast_log(LOG_DEBUG, "Queue '%s' Leave, Channel '%s'\n", q->name, qe->chan->name );
 			/* Take us out of the queue */
@@ -1585,7 +1588,7 @@ static int background_file(struct queue_ent *qe, struct ast_channel *chan, char 
 	if (!res) {
 		/* Wait for a keypress */
 		res = ast_waitstream(chan, AST_DIGIT_ANY);
-		if (res <= 0 || !valid_exit(qe, res))
+		if (res < 0 || !valid_exit(qe, res))
 			res = 0;
 
 		/* Stop playback */
@@ -1628,8 +1631,9 @@ static int say_periodic_announcement(struct queue_ent *qe)
 	/* play the announcement */
 	res = background_file(qe, qe->chan, qe->parent->sound_periodicannounce[qe->last_periodic_announce_sound]);
 
-	/* Resume Music on Hold */
-	ast_moh_start(qe->chan, qe->moh);
+	/* Resume Music on Hold if the caller is going to stay in the queue */
+	if (!res)
+		ast_moh_start(qe->chan, qe->moh);
 
 	/* update last_periodic_announce_time */
 	qe->last_periodic_announce_time = now;
@@ -1655,6 +1659,24 @@ static void record_abandoned(struct queue_ent *qe)
 	ast_mutex_unlock(&qe->parent->lock);
 }
 
+/*! \brief RNA == Ring No Answer. Common code that is executed when we try a queue member and they don't answer. */
+static void rna(int rnatime, struct queue_ent *qe, char *membername)
+{
+
+	if (option_verbose > 2)
+		ast_verbose( VERBOSE_PREFIX_3 "Nobody picked up in %d ms\n", rnatime);
+	ast_queue_log(qe->parent->name, qe->chan->uniqueid, membername, "RINGNOANSWER", "%d", rnatime);
+	if (qe->parent->autopause) {
+		if (!set_member_paused(qe->parent->name, membername, 1)) {
+			if (option_verbose > 2)
+				ast_verbose( VERBOSE_PREFIX_3 "Auto-Pausing Queue Member %s in queue %s since they failed to answer.\n", membername, qe->parent->name);
+		} else {
+			if (option_verbose > 2)
+				ast_verbose( VERBOSE_PREFIX_3 "Failed to pause Queue Member %s in queue %s!\n", membername, qe->parent->name);
+		}
+	}
+ return;
+} 
 
 #define AST_MAX_WATCHERS 256
 
@@ -1673,6 +1695,10 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 	struct ast_channel *winner;
 	struct ast_channel *in = qe->chan;
 	char on[256] = "";
+	long starttime = 0;
+	long endtime = 0;	
+
+	starttime = (long)time(NULL);
 	
 	while(*to && !peer) {
 		int numlines, retry, pos = 1;
@@ -1788,6 +1814,9 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 							if (in->cdr)
 								ast_cdr_busy(in->cdr);
 							do_hang(o);
+							endtime = (long)time(NULL);
+							endtime -= starttime;
+							rna(endtime*1000, qe, on);
 							if (qe->parent->strategy != QUEUE_STRATEGY_RINGALL) {
 								if (qe->parent->timeoutrestart)
 									*to = orig;
@@ -1800,6 +1829,9 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 								ast_verbose( VERBOSE_PREFIX_3 "%s is circuit-busy\n", o->chan->name);
 							if (in->cdr)
 								ast_cdr_busy(in->cdr);
+							endtime = (long)time(NULL);
+							endtime -= starttime;
+							rna(endtime*1000, qe, on);
 							do_hang(o);
 							if (qe->parent->strategy != QUEUE_STRATEGY_RINGALL) {
 								if (qe->parent->timeoutrestart)
@@ -1827,6 +1859,9 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 					}
 					ast_frfree(f);
 				} else {
+					endtime = (long)time(NULL);
+					endtime -= starttime;
+					rna(endtime*1000, qe, on);
 					do_hang(o);
 					if (qe->parent->strategy != QUEUE_STRATEGY_RINGALL) {
 						if (qe->parent->timeoutrestart)
@@ -1868,20 +1903,8 @@ static struct callattempt *wait_for_answer(struct queue_ent *qe, struct callatte
 			}
 			ast_frfree(f);
 		}
-		if (!*to) {
-			if (option_verbose > 2)
-				ast_verbose( VERBOSE_PREFIX_3 "Nobody picked up in %d ms\n", orig);
-			ast_queue_log(qe->parent->name, qe->chan->uniqueid, on, "RINGNOANSWER", "%d", orig);
-			if (qe->parent->autopause) {
-				if (!set_member_paused(qe->parent->name, on, 1)) {
-					if (option_verbose > 2)
-						ast_verbose( VERBOSE_PREFIX_3 "Auto-Pausing Queue Member %s in queue %s since they failed to answer.\n", on, qe->parent->name);
-				} else {
-					if (option_verbose > 2)
-						ast_verbose( VERBOSE_PREFIX_3 "Failed to pause Queue Member %s in queue %s!\n", on, qe->parent->name);
-				}
-			}
-		}
+		if (!*to) 
+			rna(orig, qe, on);
 	}
 
 	return peer;
@@ -1993,18 +2016,17 @@ static int wait_our_turn(struct queue_ent *qe, int ringing, enum queue_result *r
 		}
 
 		/* Make a position announcement, if enabled */
-		if (qe->parent->announcefrequency && !ringing)
-			res = say_position(qe);
-		if (res)
+		if (qe->parent->announcefrequency && !ringing &&
+		    (res = say_position(qe)))
 			break;
 
 		/* Make a periodic announcement, if enabled */
-		if (qe->parent->periodicannouncefrequency && !ringing)
-			res = say_periodic_announcement(qe);
+		if (qe->parent->periodicannouncefrequency && !ringing &&
+		    (res = say_periodic_announcement(qe)))
+			break;
 
 		/* Wait a second before checking again */
-		if (!res) res = ast_waitfordigit(qe->chan, RECHECK * 1000);
-		if (res)
+		if ((res = ast_waitfordigit(qe->chan, RECHECK * 1000)))
 			break;
 	}
 	return res;
@@ -2201,7 +2223,10 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 			free(tmp);
 		}
 	}
-	to = (qe->parent->timeout) ? qe->parent->timeout * 1000 : -1;
+	if (qe->expire && (!qe->parent->timeout || (qe->expire - now) <= qe->parent->timeout))
+		to = (qe->expire - now) * 1000;
+	else
+		to = (qe->parent->timeout) ? qe->parent->timeout * 1000 : -1;
 	ring_one(qe, outgoing, &numbusies);
 	ast_mutex_unlock(&qe->parent->lock);
 	if (use_weight) 
@@ -2298,7 +2323,7 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 		if (res < 0) {
 			ast_queue_log(queuename, qe->chan->uniqueid, peer->name, "SYSCOMPAT", "%s", "");
 			ast_log(LOG_WARNING, "Had to drop call because I couldn't make %s compatible with %s\n", qe->chan->name, peer->name);
-		record_abandoned(qe);
+			record_abandoned(qe);
 			ast_hangup(peer);
 			return -1;
 		}
@@ -2340,6 +2365,7 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 						}
 					}
 
+					memset(tmpid, 0, sizeof(tmpid));
 					pbx_substitute_variables_helper(qe->chan, tmpid2, tmpid, sizeof(tmpid) - 1);
 				}
 
@@ -2353,6 +2379,8 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 							*p = '$';
 						}
 					}
+
+					memset(meid, 0, sizeof(meid));
 					pbx_substitute_variables_helper(qe->chan, meid2, meid, sizeof(meid) - 1);
 				} 
 	
@@ -2364,14 +2392,15 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 					ast_log(LOG_WARNING, "monitor-format (in queues.conf) and MONITOR_FILENAME cannot contain a '|'! Not recording.\n");
 					mixmonapp = NULL;
 				}
+
+				if (!monitor_options)
+					monitor_options = ast_strdupa("");
 				
 				if (strchr(monitor_options, '|')) {
 					ast_log(LOG_WARNING, "MONITOR_OPTIONS cannot contain a '|'! Not recording.\n");
 					mixmonapp = NULL;
 				}
 
-				if (!monitor_options)
-					monitor_options = ast_strdupa("");
 
 				if (mixmonapp) {
 					if (!ast_strlen_zero(monitor_exec) && !ast_strlen_zero(monitor_options)) 
@@ -2456,13 +2485,10 @@ static int try_calling(struct queue_ent *qe, const char *options, char *announce
 					      (long)(time(NULL) - callstart));
 		}
 
-		if(bridge != AST_PBX_NO_HANGUP_PEER)
+		if (bridge != AST_PBX_NO_HANGUP_PEER)
 			ast_hangup(peer);
 		update_queue(qe->parent, member);
-		if (bridge == 0) 
-			res = 1; /* JDG: bridge successfully, leave app_queue */
-		else 
-			res = bridge; /* bridge error, stay in the queue */
+		res = bridge ? 0 : -1;
 	}
 out:
 	hangupcalls(outgoing, NULL);
@@ -3139,9 +3165,8 @@ check_turns:
 
 				if (makeannouncement) {
 					/* Make a position announcement, if enabled */
-					if (qe.parent->announcefrequency && !ringing)
-						res = say_position(&qe);
-					if (res) {
+					if (qe.parent->announcefrequency && !ringing &&
+					    (res = say_position(&qe))) {
 						 ast_queue_log(args.queuename, chan->uniqueid, "NONE", "EXITWITHKEY", "%s|%d", qe.digits, qe.pos);
 						break;
 					}
@@ -3150,10 +3175,8 @@ check_turns:
 				makeannouncement = 1;
 
 				/* Make a periodic announcement, if enabled */
-				if (qe.parent->periodicannouncefrequency && !ringing)
-					res = say_periodic_announcement(&qe);
-
-				if (res && valid_exit(&qe, res)) {
+				if (qe.parent->periodicannouncefrequency && !ringing &&
+				    (res = say_periodic_announcement(&qe))) {
 					ast_queue_log(args.queuename, chan->uniqueid, "NONE", "EXITWITHKEY", "%c|%d", res, qe.pos);
 					break;
 				}
@@ -3167,8 +3190,9 @@ check_turns:
 							record_abandoned(&qe);
 							ast_queue_log(args.queuename, chan->uniqueid, "NONE", "ABANDON", "%d|%d|%ld", qe.pos, qe.opos, (long)time(NULL) - qe.start);
 						}
-					} else if (res > 0)
+					} else if (valid_exit(&qe, res)) {
 						 ast_queue_log(args.queuename, chan->uniqueid, "NONE", "EXITWITHKEY", "%s|%d", qe.digits, qe.pos);
+					}
 					break;
 				}
 
@@ -3231,7 +3255,7 @@ check_turns:
 				if (!is_our_turn(&qe)) {
 					if (option_debug)
 						ast_log(LOG_DEBUG, "Darn priorities, going back in queue (%s)!\n",
-								qe.chan->name);
+							qe.chan->name);
 					goto check_turns;
 				}
 			}

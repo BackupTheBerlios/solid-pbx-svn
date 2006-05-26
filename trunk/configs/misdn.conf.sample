@@ -38,6 +38,20 @@ debug=0
 ;
 bridging=no
 
+
+;
+; watches the L1s of every port. If one l1 is down it tries to 
+; get it up. The timeout is given in seconds. with 0 as value it
+; does not watch the l1 at all
+; 
+; default value: 0
+;
+; this option is only read at loading time of chan_misdn, 
+; which means you need to unload and load chan_misdn to change the 
+; value, an asterisk restart should do the trick
+; 
+l1watcher_timeout=0
+
 ; stops dialtone after getting first digit on nt Port
 ;
 ; default value: yes
@@ -299,6 +313,21 @@ jitterbuffer_upper_threshold=0
 ; another channel type or to an application.
 ;
 hdlc=no
+
+
+;
+; defines the maximum amount of incoming calls per port for
+; this group. Calls which exceed the maximum will be marked with 
+; the channel varible MAX_OVERFLOW. It will contain the amount of 
+; overflowed calls
+;
+max_incoming=-1
+
+;
+; defines the maximum amount of outgoing calls per port for this group
+; exceeding calls will be rejected
+;
+max_outgoing=-1
 
 [intern]
 ; define your ports, e.g. 1,2 (depends on mISDN-driver loading order) 

@@ -70,6 +70,7 @@ static void FREE(void *ptr)
 #define DEFAULT_PARK_TIME 45000
 #define DEFAULT_TRANSFER_DIGIT_TIMEOUT 3000
 #define DEFAULT_FEATURE_DIGIT_TIMEOUT 500
+#define DEFAULT_NOANSWER_TIMEOUT_ATTENDED_TRANSFER 15000
 
 #define AST_MAX_WATCHERS 256
 
@@ -95,6 +96,8 @@ static int adsipark;
 
 static int transferdigittimeout;
 static int featuredigittimeout;
+
+static int atxfernoanswertimeout;
 
 static char *registrar = "res_features";		/*!< Registrar for operations */
 
@@ -426,6 +429,37 @@ static void set_peers(struct ast_channel **caller, struct ast_channel **callee,
 	}
 }
 
+static int builtin_parkcall(struct ast_channel *chan, struct ast_channel *peer, struct ast_bridge_config *config, char *code, int sense)
+{
+	struct ast_channel *parker;
+        struct ast_channel *parkee;
+
+	int res=0;
+	struct localuser *u;
+	LOCAL_USER_ADD(u);
+
+	set_peers(&parker, &parkee, peer, chan, sense);
+	/* Setup the exten/priority to be s/1 since we don't know
+	   where this call should return */
+	strcpy(chan->exten, "s");
+	chan->priority = 1;
+	if (chan->_state != AST_STATE_UP)
+		res = ast_answer(chan);
+	if (!res)
+		res = ast_safe_sleep(chan, 1000);
+	if (!res)
+		res = ast_park_call(parkee, parker, 0, NULL);
+	LOCAL_USER_REMOVE(u);
+	if (!res) {
+		if (sense == FEATURE_SENSE_CHAN)
+			res = AST_PBX_NO_HANGUP_PEER;
+		else
+			res = AST_PBX_KEEPALIVE;
+	}
+	return res;
+
+}
+
 static int builtin_automonitor(struct ast_channel *chan, struct ast_channel *peer, struct ast_bridge_config *config, char *code, int sense)
 {
 	char *caller_chan_id = NULL, *callee_chan_id = NULL, *args = NULL, *touch_filename = NULL;
@@ -607,7 +641,7 @@ static int builtin_blindtransfer(struct ast_channel *chan, struct ast_channel *p
 		if (option_verbose > 2)	
 			ast_verbose(VERBOSE_PREFIX_3 "Unable to find extension '%s' in context '%s'\n", xferto, transferer_real_context);
 	}
-	if (ast_stream_and_wait(transferer, xferfailsound, transferee->language, AST_DIGIT_ANY) < 0 ) {
+	if (ast_stream_and_wait(transferer, xferfailsound, transferer->language, AST_DIGIT_ANY) < 0 ) {
 		finishup(transferee);
 		return -1;
 	}
@@ -691,7 +725,7 @@ static int builtin_atxfer(struct ast_channel *chan, struct ast_channel *peer, st
 	l = strlen(xferto);
 	snprintf(xferto + l, sizeof(xferto) - l, "@%s/n", transferer_real_context);	/* append context */
 	newchan = ast_feature_request_and_dial(transferer, "Local", ast_best_codec(transferer->nativeformats),
-		xferto, 15000, &outstate, transferer->cid.cid_num, transferer->cid.cid_name);
+		xferto, atxfernoanswertimeout, &outstate, transferer->cid.cid_num, transferer->cid.cid_name);
 	ast_indicate(transferer, -1);
 	if (!newchan) {
 		finishup(transferee);
@@ -779,6 +813,7 @@ struct ast_call_feature builtin_features[] =
 	{ AST_FEATURE_REDIRECT, "Attended Transfer", "atxfer", "", "", builtin_atxfer, AST_FEATURE_FLAG_NEEDSDTMF },
 	{ AST_FEATURE_AUTOMON, "One Touch Monitor", "automon", "", "", builtin_automonitor, AST_FEATURE_FLAG_NEEDSDTMF },
 	{ AST_FEATURE_DISCONNECT, "Disconnect Call", "disconnect", "*", "*", builtin_disconnect, AST_FEATURE_FLAG_NEEDSDTMF },
+	{ AST_FEATURE_PARKCALL, "Park Call", "parkcall", "", "", builtin_parkcall, AST_FEATURE_FLAG_NEEDSDTMF },
 };
 
 
@@ -860,8 +895,12 @@ static int feature_exec_app(struct ast_channel *chan, struct ast_channel *peer, 
 	if (app) {
 		struct ast_channel *work = ast_test_flag(feature,AST_FEATURE_FLAG_CALLEE) ? peer : chan;
 		res = pbx_exec(work, app, feature->app_args);
-		if (res < 0)
-			return res; 
+		if (res == AST_PBX_KEEPALIVE)
+			return FEATURE_RETURN_PBX_KEEPALIVE;
+		else if (res == AST_PBX_NO_HANGUP_PEER)
+			return FEATURE_RETURN_NO_HANGUP_PEER;
+		else if (res)
+			return FEATURE_RETURN_SUCCESSBREAK;
 	} else {
 		ast_log(LOG_WARNING, "Could not find application (%s)\n", feature->app);
 		return -2;
@@ -935,7 +974,10 @@ static int ast_feature_interpret(struct ast_channel *chan, struct ast_channel *p
 				if (!strcmp(feature->exten, code)) {
 					if (option_verbose > 2)
 						ast_verbose(VERBOSE_PREFIX_3 " Feature Found: %s exten: %s\n",feature->sname, tok);
-					res = feature->operation(chan, peer, config, code, sense);
+					if (sense == FEATURE_SENSE_CHAN)
+						res = feature->operation(chan, peer, config, code, sense);
+					else
+						res = feature->operation(peer, chan, config, code, sense);
 					break;
 				} else if (!strncmp(feature->exten, code, strlen(code))) {
 					res = FEATURE_RETURN_STOREDIGITS;
@@ -1324,6 +1366,9 @@ int ast_bridge_call(struct ast_channel *chan,struct ast_channel *peer,struct ast
 			 * \todo XXX how do we guarantee the latter ?
 			 */
 			featurecode[strlen(featurecode)] = f->subclass;
+			/* Get rid of the frame before we start doing "stuff" with the channels */
+			ast_frfree(f);
+			f = NULL;
 			config->feature_timer = backup_config.feature_timer;
 			res = ast_feature_interpret(chan, peer, config, featurecode, sense);
 			switch(res) {
@@ -1336,10 +1381,8 @@ int ast_bridge_call(struct ast_channel *chan,struct ast_channel *peer,struct ast
 			}
 			if (res >= FEATURE_RETURN_PASSDIGITS) {
 				res = 0;
-			} else {
-				ast_frfree(f);
+			} else 
 				break;
-			}
 			hasfeatures = !ast_strlen_zero(chan_featurecode) || !ast_strlen_zero(peer_featurecode);
 			if (hadfeatures && !hasfeatures) {
 				/* Restore backup */
@@ -1946,6 +1989,7 @@ static int load_config(void)
 
 	transferdigittimeout = DEFAULT_TRANSFER_DIGIT_TIMEOUT;
 	featuredigittimeout = DEFAULT_FEATURE_DIGIT_TIMEOUT;
+	atxfernoanswertimeout = DEFAULT_NOANSWER_TIMEOUT_ATTENDED_TRANSFER;
 
 	cfg = ast_config_load("features.conf");
 	if (cfg) {
@@ -1982,6 +2026,12 @@ static int load_config(void)
 					ast_log(LOG_WARNING, "%s is not a valid featuredigittimeout\n", var->value);
 					featuredigittimeout = DEFAULT_FEATURE_DIGIT_TIMEOUT;
 				}
+			} else if (!strcasecmp(var->name, "atxfernoanswertimeout")) {
+				if ((sscanf(var->value, "%d", &atxfernoanswertimeout) != 1) || (atxfernoanswertimeout < 1)) {
+					ast_log(LOG_WARNING, "%s is not a valid atxfernoanswertimeout\n", var->value);
+					atxfernoanswertimeout = DEFAULT_NOANSWER_TIMEOUT_ATTENDED_TRANSFER;
+				} else
+					atxfernoanswertimeout = atxfernoanswertimeout * 1000;
 			} else if (!strcasecmp(var->name, "courtesytone")) {
 				ast_copy_string(courtesytone, var->value, sizeof(courtesytone));
 			}  else if (!strcasecmp(var->name, "parkedplay")) {

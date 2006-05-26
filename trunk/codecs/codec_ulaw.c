@@ -54,33 +54,33 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 /*! \brief convert and store samples in outbuf */
 static int ulawtolin_framein(struct ast_trans_pvt *pvt, struct ast_frame *f)
 {
-	int i;
+	int i = f->samples;
 	unsigned char *src = f->data;
-	int16_t *dst = (int16_t *)pvt->outbuf;
-	int in_samples = f->samples;
-	int out_samples = pvt->samples;
+	int16_t *dst = (int16_t *)pvt->outbuf + pvt->samples;
+
+	pvt->samples += i;
+	pvt->datalen += i * 2;	/* 2 bytes/sample */
 
 	/* convert and copy in outbuf */
-	for (i = 0; i < in_samples; i++)
-		dst[out_samples++] = AST_MULAW(src[i]);
+	while (i--)
+		*dst++ = AST_MULAW(*src++);
 
-	pvt->samples = out_samples;
-	pvt->datalen += in_samples * 2;	/* 2 bytes/sample */
 	return 0;
 }
 
 /*! \brief convert and store samples in outbuf */
 static int lintoulaw_framein(struct ast_trans_pvt *pvt, struct ast_frame *f)
 {
-	int i;
+	int i = f->samples;
 	char *dst = pvt->outbuf + pvt->samples;
 	int16_t *src = f->data;
-	int in_samples = f->samples;
 
-	for (i = 0; i < in_samples; i++) 
-		*dst++ = AST_LIN2MU(src[i]);
-	pvt->samples += in_samples;
-	pvt->datalen += in_samples;	/* 1 byte/sample */
+	pvt->samples += i;
+	pvt->datalen += i;	/* 1 byte/sample */
+
+	while (i--)
+		*dst++ = AST_LIN2MU(*src++);
+
 	return 0;
 }
 

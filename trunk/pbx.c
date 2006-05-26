@@ -296,7 +296,7 @@ static struct pbx_builtin {
 
 	{ "Congestion", pbx_builtin_congestion,
 	"Indicate the Congestion condition",
-	"  Congestion([timeout]): This application will indicate the congenstion\n"
+	"  Congestion([timeout]): This application will indicate the congestion\n"
 	"condition to the calling channel. If the optional timeout is specified, the\n"
 	"calling channel will be hung up after the specified number of seconds.\n"
 	"Otherwise, this application will wait until the calling channel hangs up.\n"
@@ -1779,6 +1779,12 @@ static int ast_extension_state2(struct ast_exten *e)
 			allfree = 0;
 			break;
 		case AST_DEVICE_RINGING:
+			ring = 1;
+			allunavailable = 0;
+			allfree = 0;
+			break;
+		case AST_DEVICE_RINGINUSE:
+			inuse = 1;
 			ring = 1;
 			allunavailable = 0;
 			allfree = 0;
