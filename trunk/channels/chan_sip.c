@@ -1588,8 +1588,8 @@ static int retrans_pkt(void *data)
 	pkt->retransid = -1;
 
 	if (ast_test_flag(pkt, FLAG_FATAL)) {
-		while(pkt->owner->owner && ast_mutex_trylock(&pkt->owner->owner->lock)) {
-			ast_mutex_unlock(&pkt->owner->lock);
+		while(pkt->owner->owner && ast_channel_trylock(pkt->owner->owner)) {
+			ast_mutex_unlock(&pkt->owner->lock);	/* SIP_PVT, not channel */
 			usleep(1);
 			ast_mutex_lock(&pkt->owner->lock);
 		}
@@ -2353,6 +2353,7 @@ static int auto_congest(void *nothing)
 		/* XXX fails on possible deadlock */
 		if (!ast_channel_trylock(p->owner)) {
 			ast_log(LOG_NOTICE, "Auto-congesting %s\n", p->owner->name);
+			append_history(p, "Cong", "Auto-congesting (timer)");
 			ast_queue_control(p->owner, AST_CONTROL_CONGESTION);
 			ast_channel_unlock(p->owner);
 		}
@@ -7186,7 +7187,7 @@ static struct sip_pvt *get_sip_pvt_byid_locked(const char *callid, const char *t
 					sip_pvt_ptr->theirtag, sip_pvt_ptr->tag);
 
 			/* deadlock avoidance... */
-			while (sip_pvt_ptr->owner && ast_mutex_trylock(&sip_pvt_ptr->owner->lock)) {
+			while (sip_pvt_ptr->owner && ast_channel_trylock(sip_pvt_ptr->owner)) {
 				ast_mutex_unlock(&sip_pvt_ptr->lock);
 				usleep(1);
 				ast_mutex_lock(&sip_pvt_ptr->lock);
