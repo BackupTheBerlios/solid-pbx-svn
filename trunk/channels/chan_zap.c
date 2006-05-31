@@ -6529,9 +6529,10 @@ static int handle_init_event(struct zt_pvt *i, int event)
 			alarm2str(res), i->channel);
 		/* fall thru intentionally */
 	case ZT_EVENT_ONHOOK:
-		if (i->radio) break;
+		if (i->radio)
+			break;
 		/* Back on hook.  Hang up. */
-		switch(i->sig) {
+		switch (i->sig) {
 		case SIG_FXOLS:
 		case SIG_FXOGS:
 		case SIG_FEATD:
