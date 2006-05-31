@@ -13,53 +13,19 @@
 
 MODS:=$(filter-out $(MENUSELECT_CHANNELS),$(patsubst %.c,%.so,$(wildcard chan_*.c)))
 
-ifeq ($(OSARCH),OpenBSD)
-  PTLIB=-lpt_OpenBSD_x86_r
-  H323LIB=-lh323_OpenBSD_x86_r
-endif
-
-ifeq ($(OSARCH),Linux)
-  PTLIB=-lpt_linux_x86_r
-  H323LIB=-lh323_linux_x86_r
-  CHANH323LIB=-ldl
-endif
-
 ifeq ($(PROC),sparc64)
   PROC=ultrasparc
   CFLAGS += -mtune=$(PROC) -pipe -fomit-frame-pointer -mcpu=v8
-endif
-
-ifeq ($(OSARCH),FreeBSD)
-  PTLIB=-lpt_FreeBSD_x86_r
-  H323LIB=-lh323_FreeBSD_x86_r
-  CHANH323LIB=-pthread
-endif
-
-ifeq ($(OSARCH),NetBSD)
-  PTLIB=-lpt_NetBSD_x86_r
-  H323LIB=-lh323_NetBSD_x86_r
 endif
 
 ifeq ($(OSARCH),SunOS)
   SOLINK+=-lrt
 endif
 
-ifeq ($(wildcard h323/libchanh323.a),)
-  MODS:=$(filter-out chan_h323.so,$(MODS))
-endif
-
 ifeq ($(wildcard $(CROSS_COMPILE_TARGET)/usr/include/mISDNuser/mISDNlib.h),)
   MODS:=$(filter-out chan_misdn.so,$(MODS))
 else
   CFLAGS+=-Imisdn 
-endif
-
-ifndef OPENH323DIR
-  OPENH323DIR=$(HOME)/openh323
-endif
-
-ifndef PWLIBDIR
-  PWLIBDIR=$(HOME)/pwlib
 endif
 
 all: depend $(MODS) 
@@ -76,10 +42,6 @@ clean: clean-depend
 
 ifneq ($(wildcard .depend),)
   include .depend
-endif
-
-ifneq ($(wildcard h323/Makefile.ast),)
-  include h323/Makefile.ast
 endif
 
 ifneq ($(wildcard misdn/Makefile.ast),)
@@ -136,14 +98,6 @@ chan_jingle.o: chan_jingle.c
 
 chan_jingle.so: chan_jingle.o
 	$(CC) $(SOLINK) -o $@ $< $(IKSEMEL_LIB)
-
-ifeq ($(OSARCH),Linux)
-chan_h323.so: chan_h323.o h323/libchanh323.a h323/Makefile.ast
-	$(CC) $(SOLINK) $(H323LDFLAGS) -o $@ $< h323/libchanh323.a $(H323LDLIBS) -lstdc++
-else
-chan_h323.so: chan_h323.o h323/libchanh323.a
-	$(CC) $(SOLINK) -o $@ $< h323/libchanh323.a $(CHANH323LIB) -L$(PWLIBDIR)/lib $(PTLIB) -L$(OPENH323DIR)/lib $(H323LIB) -L/usr/lib -lcrypto -lssl -lexpat
-endif
 
 misdn/chan_misdn_lib.a:
 	make -C misdn
