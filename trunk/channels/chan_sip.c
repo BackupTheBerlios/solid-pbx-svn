@@ -202,6 +202,17 @@ static int expiry = DEFAULT_EXPIRY;
 
 #define	INITIAL_CSEQ		101	/*!< our initial sip sequence number */
 
+#include "asterisk/abstract_jb.h"
+/* Global jitterbuffer configuration - by default, jb is disabled */
+static struct ast_jb_conf default_jbconf =
+{
+	.flags = 0,
+	.max_size = -1,
+	.resync_threshold = -1,
+	.impl = ""
+};
+static struct ast_jb_conf global_jbconf;
+
 static const char tdesc[] = "Session Initiation Protocol (SIP)";
 static const char config[] = "sip.conf";
 static const char notify_config[] = "sip_notify.conf";
@@ -850,6 +861,7 @@ static struct sip_pvt {
 	struct ast_variable *chanvars;		/*!< Channel variables to set for inbound call */
 	struct sip_pvt *next;			/*!< Next dialog in chain */
 	struct sip_invite_param *options;	/*!< Options for INVITE */
+	struct ast_jb_conf jbconf;
 } *iflist = NULL;
 
 #define FLAG_RESPONSE (1 << 0)
@@ -1256,7 +1268,7 @@ static const struct ast_channel_tech sip_tech = {
 	.type = "SIP",
 	.description = "Session Initiation Protocol (SIP)",
 	.capabilities = ((AST_FORMAT_MAX_AUDIO << 1) - 1),
-	.properties = AST_CHAN_TP_WANTSJITTER,
+	.properties = AST_CHAN_TP_WANTSJITTER | AST_CHAN_TP_CREATESJITTER,
 	.requester = sip_request_call,
 	.devicestate = sip_devicestate,
 	.call = sip_call,
@@ -1456,11 +1468,16 @@ static int ast_sip_ouraddrfor(struct in_addr *them, struct in_addr *us)
 	 * apply it to their address to see if we need to substitute our
 	 * externip or can get away with our internal bindaddr
 	 */
-	struct sockaddr_in theirs;
+	struct sockaddr_in theirs, ours;
+
+	/* Get our local information */
+	ast_ouraddrfor(them, us);
 	theirs.sin_addr = *them;
+	ours.sin_addr = *us;
 
 	if (localaddr && externip.sin_addr.s_addr &&
-	   ast_apply_ha(localaddr, &theirs)) {
+	    ast_apply_ha(localaddr, &theirs) &&
+	    !ast_apply_ha(localaddr, &ours)) {
 		if (externexpire && time(NULL) >= externexpire) {
 			struct ast_hostent ahp;
 			struct hostent *hp;
@@ -1480,8 +1497,6 @@ static int ast_sip_ouraddrfor(struct in_addr *them, struct in_addr *us)
 		}
 	} else if (bindaddr.sin_addr.s_addr)
 		*us = bindaddr.sin_addr;
-	else
-		return ast_ouraddrfor(them, us);
 	return 0;
 }
 
@@ -3309,7 +3324,11 @@ static struct ast_channel *sip_new(struct sip_pvt *i, int state, const char *tit
 
 	if (recordhistory)
 		append_history(i, "NewChan", "Channel %s - from %s", tmp->name, i->callid);
-				
+
+	/* Configure the new channel jb */
+	if (tmp && i && i->rtp)
+		ast_jb_configure(tmp, &i->jbconf);
+
 	return tmp;
 }
 
@@ -3643,6 +3662,9 @@ static struct sip_pvt *sip_alloc(ast_string_field callid, struct sockaddr_in *si
 	    (ast_test_flag(&p->flags[0], SIP_DTMF) == SIP_DTMF_AUTO))
 		p->noncodeccapability |= AST_RTP_DTMF;
 	ast_string_field_set(p, context, default_context);
+
+	/* Assign default jb conf to the new sip_pvt */
+	memcpy(&p->jbconf, &global_jbconf, sizeof(struct ast_jb_conf));
 
 	/* Add to active dialog list */
 	ast_mutex_lock(&iflock);
@@ -13244,7 +13266,6 @@ static struct sip_peer *build_peer(const char *name, struct ast_variable *v, int
 	for (; v; v = v->next) {
 		if (handle_common_options(&peerflags[0], &mask[0], v))
 			continue;
-
 		if (realtime && !strcasecmp(v->name, "regseconds")) {
 			ast_get_time_t(v->value, &regseconds, 0, NULL);
 		} else if (realtime && !strcasecmp(v->name, "ipaddr") && !ast_strlen_zero(v->value) ) {
@@ -13537,11 +13558,18 @@ static int reload_config(enum channelreloadreason reason)
 	global_relaxdtmf = FALSE;
 	global_callevents = FALSE;
 	global_t1min = DEFAULT_T1MIN;		
+
+	/* Copy the default jb config over global_jbconf */
+	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
+
 	ast_clear_flag(&global_flags[1], SIP_PAGE2_VIDEOSUPPORT);
 
 	/* Read the [general] config section of sip.conf (or from realtime config) */
 	for (v = ast_variable_browse(cfg, "general"); v; v = v->next) {
 		if (handle_common_options(&global_flags[0], &dummy[0], v))
+			continue;
+		/* handle jb conf */
+		if (!ast_jb_read_conf(&global_jbconf, v->name, v->value))
 			continue;
 
 		/* Create the interface list */
