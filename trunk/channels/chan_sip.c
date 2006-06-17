@@ -857,7 +857,6 @@ static struct sip_pvt {
 	struct ast_variable *chanvars;		/*!< Channel variables to set for inbound call */
 	struct sip_pvt *next;			/*!< Next dialog in chain */
 	struct sip_invite_param *options;	/*!< Options for INVITE */
-	struct ast_jb_conf jbconf;
 } *iflist = NULL;
 
 #define FLAG_RESPONSE (1 << 0)
@@ -1367,7 +1366,7 @@ static unsigned int parse_sip_options(struct sip_pvt *pvt, const char *supported
 	unsigned int profile = 0;
 	int i, found;
 
-	if (!pvt || ast_strlen_zero(supported) )
+	if (ast_strlen_zero(supported) )
 		return 0;
 
 	if (option_debug > 2 && sipdebug)
@@ -1393,7 +1392,8 @@ static unsigned int parse_sip_options(struct sip_pvt *pvt, const char *supported
 			ast_log(LOG_DEBUG, "Found no match for SIP option: %s (Please file bug report!)\n", next);
 	}
 
-	pvt->sipoptions = profile;
+	if (pvt)
+		pvt->sipoptions = profile;
 	return profile;
 }
 
@@ -3357,7 +3357,7 @@ static struct ast_channel *sip_new(struct sip_pvt *i, int state, const char *tit
 
 	/* Configure the new channel jb */
 	if (tmp && i && i->rtp)
-		ast_jb_configure(tmp, &i->jbconf);
+		ast_jb_configure(tmp, &global_jbconf);
 
 	return tmp;
 }
@@ -3692,9 +3692,6 @@ static struct sip_pvt *sip_alloc(ast_string_field callid, struct sockaddr_in *si
 	    (ast_test_flag(&p->flags[0], SIP_DTMF) == SIP_DTMF_AUTO))
 		p->noncodeccapability |= AST_RTP_DTMF;
 	ast_string_field_set(p, context, default_context);
-
-	/* Assign default jb conf to the new sip_pvt */
-	memcpy(&p->jbconf, &global_jbconf, sizeof(struct ast_jb_conf));
 
 	/* Add to active dialog list */
 	ast_mutex_lock(&iflock);
