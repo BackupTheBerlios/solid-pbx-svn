@@ -104,7 +104,7 @@ static char reload_usage[] =
 
 static char test_usage[] = 
 "Usage: JABBER test [client]\n" 
-"       Sends test massage for debugging purposes.  A specific client\n"
+"       Sends test message for debugging purposes.  A specific client\n"
 "       as configured in jabber.conf can be optionally specified.\n";
 
 static struct ast_cli_entry aji_cli[] = {
@@ -169,6 +169,7 @@ static void aji_buddy_destroy(struct aji_buddy *obj)
 
 	while ((tmp = obj->resources)) {
 		obj->resources = obj->resources->next;
+		free(tmp->description);
 		free(tmp);
 	}
 
@@ -811,7 +812,11 @@ static int aji_client_info_handler(void *data, ikspak *pak)
 	buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, pak->from->partial);
 
 	resource = aji_find_resource(buddy, pak->from->resource);
-
+	if (!resource) {
+		ast_log(LOG_NOTICE,"JABBER: Received client info from %s when not requested.\n", pak->from->full);
+		ASTOBJ_UNREF(client, aji_client_destroy);
+		return IKS_FILTER_EAT;
+	}	
 	if (pak->subtype == IKS_TYPE_RESULT) {
 		if (iks_find_with_attrib(pak->query, "feature", "var", "http://www.google.com/xmpp/protocol/voice/v1")) {
 			resource->cap->jingle = 1;
@@ -837,8 +842,8 @@ static int aji_client_info_handler(void *data, ikspak *pak)
 			iks_insert_attrib(google, "var", "http://www.google.com/xmpp/protocol/voice/v1");
 			iks_insert_node(iq, query);
 			iks_insert_node(query, ident);
-			iks_insert_node(query, disco);
 			iks_insert_node(query, google);
+			iks_insert_node(query, disco);
 			iks_send(client->p, iq);
 		} else
 			ast_log(LOG_ERROR, "Out of Memory.\n");
@@ -1011,7 +1016,7 @@ static void aji_handle_presence(struct aji_client *client, ikspak *pak)
 	int status, priority;
 	struct aji_buddy *buddy = NULL;
 	struct aji_resource *tmp = NULL, *last = NULL, *found = NULL;
-	char *ver, *node;
+	char *ver, *node, *descrip;
 	
 	if(client->state != AJI_CONNECTED) {
 		buddy = (struct aji_buddy *) malloc(sizeof(struct aji_buddy));
@@ -1044,10 +1049,13 @@ static void aji_handle_presence(struct aji_client *client, ikspak *pak)
 	status = (pak->show) ? pak->show : 6;
 	priority = atoi((iks_find_cdata(pak->x, "priority")) ? iks_find_cdata(pak->x, "priority") : "0");
 	tmp = buddy->resources;
+	descrip = ast_strdup(iks_find_cdata(pak->x,"status"));
 
 	while (tmp) {
 		if (!strcasecmp(tmp->resource, pak->from->resource)) {
 			tmp->status = status;
+			if (tmp->description) free(tmp->description);
+			tmp->description = descrip;
 			found = tmp;
 			if (status == 6) {	/* Sign off Destroy resource */
 				if (last && found->next) {
@@ -1110,6 +1118,7 @@ static void aji_handle_presence(struct aji_client *client, ikspak *pak)
 		}
 		ast_copy_string(found->resource, pak->from->resource, sizeof(found->resource));
 		found->status = status;
+		found->description = descrip;
 		found->priority = priority;
 		found->next = NULL;
 		last = NULL;
