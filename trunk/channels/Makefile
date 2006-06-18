@@ -11,7 +11,7 @@
 # the GNU General Public License
 #
 
-MODS:=$(filter-out $(MENUSELECT_CHANNELS),$(patsubst %.c,%.so,$(wildcard chan_*.c)))
+SELECTED_MODS:=$(filter-out $(MENUSELECT_CHANNELS),$(patsubst %.c,%,$(wildcard chan_*.c)))
 
 ifeq ($(PROC),sparc64)
   PROC=ultrasparc
@@ -23,10 +23,12 @@ ifeq ($(OSARCH),SunOS)
 endif
 
 ifeq ($(wildcard $(CROSS_COMPILE_TARGET)/usr/include/mISDNuser/mISDNlib.h),)
-  MODS:=$(filter-out chan_misdn.so,$(MODS))
+  SELECTED_MODS:=$(filter-out chan_misdn.so,$(SELECTED_MODS))
 else
   CFLAGS+=-Imisdn 
 endif
+
+MODS:=$(patsubst %,%.so,$(SELECTED_MODS))
 
 all: depend $(MODS) 
 
