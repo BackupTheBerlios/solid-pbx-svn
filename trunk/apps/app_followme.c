@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$version$")
+ASTERISK_FILE_VERSION(__FILE__, "$revision$")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -164,7 +164,7 @@ static char sorryprompt[AST_CONFIG_MAX_PATH] = "followme/followme-sorry";
 
 
 static AST_LIST_HEAD_STATIC(followmes, ast_call_followme);
-AST_LIST_HEAD_NOLOCK(findme_user_listptr, findme_user);
+static AST_LIST_HEAD_NOLOCK(findme_user_listptr, findme_user);
 
 static void free_numbers(struct ast_call_followme *f)
 {
@@ -264,8 +264,7 @@ static struct number *create_followme_number(char *number, int timeout, int numo
 
 	if (cur) {
 		cur->timeout = timeout;
-		if (strchr(number, ',')) { 
-			tmp = strchr(number, ',');
+		if ((tmp = strchr(number, ','))) { 
 			*tmp = '\0';
 		}
 		ast_copy_string(cur->number, number, sizeof(cur->number));
@@ -439,7 +438,7 @@ static void clear_caller(struct findme_user *tmpuser)
 		}
 		if (outbound->cdr) {
 			char tmp[256];
-			snprintf(tmp, 256, "%s/%s", "Local", tmpuser->dialarg);
+			snprintf(tmp, sizeof(tmp), "%s/%s", "Local", tmpuser->dialarg);
 			ast_cdr_setapp(outbound->cdr,"FollowMe",tmp);
 			ast_cdr_update(outbound);
 			ast_cdr_start(outbound->cdr);
@@ -476,10 +475,10 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 	int ctstatus;
 	int dg;
 	struct findme_user *tmpuser;
-	int *to = ast_calloc(1, sizeof(*to));
+	int to = 0;
 	int livechannels = 0;
 	int tmpto;
-	long totalwait = 0, wtd, towas = *to;
+	long totalwait = 0, wtd, towas = 0;
 	char *callfromname;
 	char *pressbuttonname;
 
@@ -494,14 +493,13 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 			if (option_verbose > 2)
 				ast_verbose(VERBOSE_PREFIX_3 "Original caller hungup. Cleanup.\n");
 			clear_calling_tree(findme_user_list);
-			free(to);
 			return NULL;
 		}
 		ctstatus = 0;
 		totalwait = nm->timeout * 1000;
 		wtd = 0;
 		while (!ctstatus) {
-			*to = 1000;
+			to = 1000;
 			pos = 1; 
 			livechannels = 0;
 			watchers[0] = caller;
@@ -523,7 +521,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 								ast_sched_runq(tmpuser->ochan->sched);
 							} else {
 								ast_log(LOG_WARNING, "Unable to playback %s.\n", callfromname);
-								free(to);
 								return NULL;
 							}							
 						} else {
@@ -533,7 +530,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 								ast_sched_runq(tmpuser->ochan->sched);
 							else {
 								ast_log(LOG_WARNING, "Unable to playback %s.\n", tpargs->norecordingprompt);
-								free(to);
 								return NULL;
 							}
 						}
@@ -541,8 +537,8 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 					if (tmpuser->ochan->stream) {
 						ast_sched_runq(tmpuser->ochan->sched);
 						tmpto = ast_sched_wait(tmpuser->ochan->sched);
-						if (tmpto > 0 && tmpto < *to)
-							*to = tmpto;
+						if (tmpto > 0 && tmpto < to)
+							to = tmpto;
 						else if (tmpto < 0 && !tmpuser->ochan->timingfunc) {
 							ast_stopstream(tmpuser->ochan);
 							if (tmpuser->state == 1) {
@@ -558,7 +554,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 										tmpuser->state = 3;
 									else {
 										ast_log(LOG_WARNING, "Unable to playback %s.\n", pressbuttonname);
-										free(to);
 										return NULL;
 									} 
 								}
@@ -571,7 +566,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 									tmpuser->state = 3;
 									
 								} else {
-									ast_log(LOG_WARNING, "Unable to playback %s.\n", pressbuttonname);										  free(to);
 									return NULL;
 								} 
 							} else if (tmpuser->state == 3) {
@@ -586,21 +580,20 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 				}
 			}
 
-			tmpto = *to;
-			if (*to < 0) {
-				*to = 1000;
+			tmpto = to;
+			if (to < 0) {
+				to = 1000;
 				tmpto = 1000;
 			}
-			towas = *to;
-			winner = ast_waitfor_n(watchers, pos, to);
-			tmpto -= *to;
+			towas = to;
+			winner = ast_waitfor_n(watchers, pos, &to);
+			tmpto -= to;
 			totalwait -= tmpto;
-			wtd = *to;	
+			wtd = to;	
 			if (totalwait <= 0) {
 				if (option_verbose > 2)	
 					ast_verbose(VERBOSE_PREFIX_3 "We've hit our timeout for this step. Drop everyone and move on to the next one. %ld\n", totalwait);
 				clear_calling_tree(findme_user_list);
-				free(to);
 				return NULL;
 			}
 			if (winner) {
@@ -640,7 +633,7 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 										tmpuser->state = 1;
 									} else {
 										ast_log(LOG_WARNING, "Unable to playback %s.\n", callfromname);
-										free(to);
+										ast_frfree(f);
 										return NULL;
 									}				
 								} else {			
@@ -649,7 +642,7 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 										ast_sched_runq(tmpuser->ochan->sched);
 									else {
 										ast_log(LOG_WARNING, "Unable to playback %s.\n", tpargs->norecordingprompt);
-										free(to);
+										ast_frfree(f);
 										return NULL;
 									}
 								}
@@ -717,14 +710,14 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 							if (!strcmp(tmpuser->yn, tpargs->takecall)) {
 								if (option_debug)
 									ast_log(LOG_DEBUG, "Match to take the call!\n");
-								free(to);
+								ast_frfree(f);
 								return tmpuser->ochan;	
 							}
 							if (!strcmp(tmpuser->yn, tpargs->nextindp)) {
 								if (option_debug)
 									ast_log(LOG_DEBUG, "Next in dial plan step requested.\n");
 								*status = 1;
-								free(to);
+								ast_frfree(f);
 								return NULL;
 							}	
 
@@ -738,7 +731,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 							ast_log(LOG_DEBUG, "we didn't get a frame. hanging up. dg is %d\n",dg);					      
 						if (!dg) {
 							clear_calling_tree(findme_user_list);
-							free(to);
 							return NULL;
 						} else {
 							tmpuser->state = -1;
@@ -749,7 +741,6 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 							if (!livechannels) {
 								if (option_verbose > 2)
 									ast_verbose(VERBOSE_PREFIX_3 "no live channels left. exiting.\n");
-								free(to);
 								return NULL;
 							}
 						}
@@ -769,13 +760,11 @@ static struct ast_channel *wait_for_winner(struct findme_user_listptr *findme_us
 	}
 	
 	/* --- WAIT FOR WINNER NUMBER END! -----------*/
-	free(to);
 	return NULL;
 }
 
-static void findmeexec(void *args)
+static void findmeexec(struct fm_args *tpargs)
 {
-	struct fm_args *tpargs;
 	struct number *nm;
 	struct ast_channel *outbound;
 	struct ast_channel *caller;
@@ -791,12 +780,6 @@ static void findmeexec(void *args)
 
 	findme_user_list = ast_calloc(1, sizeof(*findme_user_list));		
 	AST_LIST_HEAD_INIT_NOLOCK(findme_user_list);
-
-	tpargs = (struct fm_args *)args;
-			
-	if (!tpargs->chan) 
-		return;
-	
 
 	/* We're going to figure out what the longest possible string of digits to collect is */
 	ynlongest = 0;
@@ -858,10 +841,10 @@ static void findmeexec(void *args)
 							outbound->cdr = ast_cdr_alloc();
 						}
 						if (outbound->cdr) {
-							ast_cdr_init(outbound->cdr, outbound);
 							char tmp[256];
-							snprintf(tmp, 256, "%s/%s", "Local", dialarg);
-							ast_cdr_setapp(outbound->cdr,"FollowMe",tmp);
+							ast_cdr_init(outbound->cdr, outbound);
+							snprintf(tmp, sizeof(tmp), "%s/%s", "Local", dialarg);
+							ast_cdr_setapp(outbound->cdr, "FollowMe", tmp);
 							ast_cdr_update(outbound);
 							ast_cdr_start(outbound->cdr);
 							ast_cdr_end(outbound->cdr);
@@ -1099,15 +1082,18 @@ static int app_exec(struct ast_channel *chan, void *data)
 static int unload_module(void *mod)
 {
 	struct ast_call_followme *f;
+	STANDARD_HANGUP_LOCALUSERS;
+	ast_unregister_application(app);
 	/* Free Memory. Yeah! I'm free! */
+	AST_LIST_LOCK(&followmes);
 	AST_LIST_TRAVERSE_SAFE_BEGIN(&followmes, f, entry) {
 		free_numbers(f);
 		AST_LIST_REMOVE_CURRENT(&followmes, entry);
 		free(f);
 	}
 	AST_LIST_TRAVERSE_SAFE_END
-	STANDARD_HANGUP_LOCALUSERS;
-	return ast_unregister_application(app);
+	AST_LIST_UNLOCK(&followmes);
+	return 0;
 }
 
 static int load_module(void *mod)
