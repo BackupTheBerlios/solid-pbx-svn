@@ -1980,24 +1980,24 @@ static void register_peer_exten(struct sip_peer *peer, int onoff)
 	if (ast_strlen_zero(global_regcontext))
 		return;
 
-		ast_copy_string(multi, S_OR(peer->regexten, peer->name), sizeof(multi));
-		stringp = multi;
-		while ((ext = strsep(&stringp, "&"))) {
- 			if ((context = strchr(ext, '@'))) {
-				*context++ = '\0';	/* split ext@context */
-				if (!ast_context_find(context)) {
-					ast_log(LOG_WARNING, "Context %s must exist in regcontext= in sip.conf!\n", context);
-					continue;
-				}
-			} else {
-				context = global_regcontext;
+	ast_copy_string(multi, S_OR(peer->regexten, peer->name), sizeof(multi));
+	stringp = multi;
+	while ((ext = strsep(&stringp, "&"))) {
+		if ((context = strchr(ext, '@'))) {
+			*context++ = '\0';	/* split ext@context */
+			if (!ast_context_find(context)) {
+				ast_log(LOG_WARNING, "Context %s must exist in regcontext= in sip.conf!\n", context);
+				continue;
 			}
-			if (onoff)
-				ast_add_extension(context, 1, ext, 1, NULL, NULL, "Noop",
-					 ast_strdup(peer->name), free, "SIP");
-			else
-				ast_context_remove_extension(context, ext, 1, NULL);
+		} else {
+			context = global_regcontext;
 		}
+		if (onoff)
+			ast_add_extension(context, 1, ext, 1, NULL, NULL, "Noop",
+				 ast_strdup(peer->name), free, "SIP");
+		else
+			ast_context_remove_extension(context, ext, 1, NULL);
+	}
 }
 
 /*! \brief Destroy peer object from memory */
@@ -6026,10 +6026,7 @@ static int transmit_register(struct sip_registry *r, int sipmethod, const char *
 	
 	/* Fromdomain is what we are registering to, regardless of actual
 	   host name from SRV */
-	if (!ast_strlen_zero(p->fromdomain))
-		snprintf(addr, sizeof(addr), "sip:%s", p->fromdomain);
-	else
-		snprintf(addr, sizeof(addr), "sip:%s", r->hostname);
+	snprintf(addr, sizeof(addr), "sip:%s", S_OR(p->fromdomain, r->hostname));
 	ast_string_field_set(p, uri, addr);
 
 	p->branch ^= ast_random();
@@ -6753,6 +6750,9 @@ static enum check_auth_result check_auth(struct sip_pvt *p, struct sip_request *
 		sip_scheddestroy(p, SIP_TRANS_TIMEOUT);
 		return AUTH_CHALLENGE_SENT;
 	} else {	/* We have auth, so check it */
+
+		/* XXX reduce nesting here */
+
 		/* Whoever came up with the authentication section of SIP can suck my %&#$&* for not putting
 	   	an example in the spec of just what it is you're doing a hash on. */
 		char a1_hash[256];
@@ -7141,11 +7141,11 @@ static int get_destination(struct sip_pvt *p, struct sip_request *oreq)
 		}
 		from += 4;
 		from = strsep(&from, ";");
-		if ((a = strchr(from, '@'))) {
-			*a = '\0';
-			ast_string_field_set(p, fromdomain, a + 1);
-		} else
-			ast_string_field_set(p, fromdomain, from);
+		if ((a = strchr(from, '@')))
+			*a++ = '\0';
+		else
+			a = from;	/* just a domain */
+		ast_string_field_set(p, fromdomain, a);
 	}
 
 	/* Skip any options and find the domain */
@@ -7371,12 +7371,10 @@ static int get_refer_info(struct sip_pvt *transferer, struct sip_request *outgoi
 	
 	if ((ptr = strchr(refer_to, '@'))) {	/* Separate domain */
 		char *urioption;
-		*ptr = '\0';
-		ptr++;
-		if ((urioption = strchr(ptr, ';'))) {
-			*urioption = '\0';
-			urioption++;
-		}	
+
+		*ptr++ = '\0';
+		if ((urioption = strchr(ptr, ';')))
+			*urioption++ = '\0';
 		/* Save the domain for the dial plan */
 		strncpy(referdata->refer_to_domain, ptr, sizeof(referdata->refer_to_domain));
 		if (urioption)
@@ -7397,12 +7395,8 @@ static int get_refer_info(struct sip_pvt *transferer, struct sip_request *outgoi
 
 	/* By default, use the context in the channel sending the REFER */
 	if (ast_strlen_zero(transfer_context)) {
-		if (!ast_strlen_zero(transferer->owner->macrocontext))
-			transfer_context=transferer->owner->macrocontext;
-		else if (ast_strlen_zero(transferer->context))
-			transfer_context = default_context;
-		else
-			transfer_context = transferer->context;
+		transfer_context = S_OR(transferer->owner->macrocontext,
+					S_OR(transferer->context, default_context));
 	}
 
 	strncpy(referdata->refer_to_context, transfer_context, sizeof(referdata->refer_to_context));
@@ -7423,20 +7417,14 @@ static int get_refer_info(struct sip_pvt *transferer, struct sip_request *outgoi
 }
 
 
-/*! \brief Call transfer support (old way, depreciated by the IETF)--*/
+/*! \brief Call transfer support (old way, deprecated by the IETF)--*/
 static int get_also_info(struct sip_pvt *p, struct sip_request *oreq)
 {
 	char tmp[256] = "", *c, *a;
-	struct sip_request *req = oreq;
-	struct sip_refer *referdata;
+	struct sip_request *req = oreq ? oreq : &p->initreq;
+	struct sip_refer *referdata = p->refer;
 	const char *transfer_context = NULL;
 	
-	referdata = p->refer;
-	
-	if (!oreq)
-		req = &p->initreq;
-	else
-		req = oreq;
 	ast_copy_string(tmp, get_header(req, "Also"), sizeof(tmp));
 	c = get_in_brackets(tmp);
 
@@ -7449,8 +7437,7 @@ static int get_also_info(struct sip_pvt *p, struct sip_request *oreq)
 	}
 	c += 4;
 	if ((a = strchr(c, '@'))) {	/* Separate Domain */
-		*a = '\0';
-		a++;
+		*a++ = '\0';
 		ast_copy_string(referdata->refer_to_domain, a, sizeof(referdata->refer_to_domain));
 	}
 	
@@ -7464,13 +7451,9 @@ static int get_also_info(struct sip_pvt *p, struct sip_request *oreq)
 		transfer_context = pbx_builtin_getvar_helper(p->owner, "TRANSFER_CONTEXT");
 
 	/* By default, use the context in the channel sending the REFER */
-	if (!transfer_context || ast_strlen_zero(transfer_context)) {
-		if (!ast_strlen_zero(p->owner->macrocontext))
-			transfer_context = p->owner->macrocontext;
-		else if (ast_strlen_zero(p->context))
-			transfer_context = default_context;
-		else
-			transfer_context = p->context;
+	if (ast_strlen_zero(transfer_context)) {
+		transfer_context = S_OR(p->owner->macrocontext,
+					S_OR(p->context, default_context));
 	}
 	if (ast_exists_extension(NULL, transfer_context, c, 1, NULL)) {
 		/* This is a blind transfer */
@@ -11239,6 +11222,8 @@ static int handle_request_notify(struct sip_pvt *p, struct sip_request *req, str
 			ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
 		return -1;
 	} else {
+		/* XXX reduce nesting depth */
+
 		/* Handle REFER notifications */
 
 		char buf[1024];
@@ -11338,6 +11323,7 @@ static int handle_request_notify(struct sip_pvt *p, struct sip_request *req, str
 		return res;
 	};
 
+	/* XXX hey, we never reach this code! */
 	/* THis could be voicemail notification */
 	transmit_response(p, "200 OK", req);
 	if (!p->lastinvite) 
@@ -11387,7 +11373,7 @@ static int handle_invite_replaces(struct sip_pvt *p, struct sip_request *req, in
 		/* We have no bridge */
 		if (!earlyreplace) {
 			if (option_debug > 1)
-			ast_log(LOG_DEBUG, "	Attended transfer attempted to replace call with no bridge (maybe ringing). Channel %s!\n", replacecall->name);
+				ast_log(LOG_DEBUG, "	Attended transfer attempted to replace call with no bridge (maybe ringing). Channel %s!\n", replacecall->name);
 			oneleggedreplace = 1;
 		}
 	} 
@@ -11952,20 +11938,19 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 		}
 	} else {
 		if (p && !ast_test_flag(&p->flags[0], SIP_NEEDDESTROY)) {
-			if (!p->jointcapability) {
-				if (ast_test_flag(req, SIP_PKT_IGNORE))
-					transmit_response(p, "488 Not Acceptable Here (codec error)", req);
-				else
-					transmit_response_reliable(p, "488 Not Acceptable Here (codec error)", req);
-				ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
-			} else {
+			const char *msg;
+
+			if (!p->jointcapability)
+				msg = "488 Not Acceptable Here (codec error)";
+			else {
 				ast_log(LOG_NOTICE, "Unable to create/find SIP channel for this INVITE\n");
-				if (ast_test_flag(req, SIP_PKT_IGNORE))
-					transmit_response(p, "503 Unavailable", req);
-				else
-					transmit_response_reliable(p, "503 Unavailable", req);
-				ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
+				msg = "503 Unavailable";
 			}
+			if (ast_test_flag(req, SIP_PKT_IGNORE))
+				transmit_response(p, msg, req);
+			else
+				transmit_response_reliable(p, msg, req);
+			ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
 		}
 	}
 	return res;
@@ -12616,6 +12601,8 @@ static int handle_request_subscribe(struct sip_pvt *p, struct sip_request *req, 
 		ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
 		return 0;
 	} else {
+		/* XXX reduce nesting here */
+
 		/* Initialize tag for new subscriptions */	
 		if (ast_strlen_zero(p->tag))
 			make_our_tag(p->tag, sizeof(p->tag));
@@ -12714,6 +12701,7 @@ static int handle_request_subscribe(struct sip_pvt *p, struct sip_request *req, 
 				ast_set_flag(&p->flags[0], SIP_NEEDDESTROY);	
 				return 0;
 			} else {
+				/* XXX reduce nesting here */
 				struct sip_pvt *p_old;
 	
 				transmit_response(p, "200 OK", req);
