@@ -7331,6 +7331,10 @@ static int get_refer_info(struct sip_pvt *transferer, struct sip_request *outgoi
 			if ((ptr = strchr(referdata->replaces_callid, ';'))) 	/* Remove options */ {
 				*ptr = '\0';
 			}
+			/*
+			 * XXX don't know what was the intention but this code is
+			 * definitely wrong, as ptr can be NULL here.
+			 */
 			ptr++;
 
 			/* Find the different tags before we destroy the string */
@@ -10030,15 +10034,11 @@ static int function_sippeer(struct ast_channel *chan, char *cmd, char *data, cha
 	} else  if (!strcasecmp(colname, "codecs")) {
 		ast_getformatname_multiple(buf, len -1, peer->capability);
 	} else  if (!strncasecmp(colname, "codec[", 6)) {
-		char *codecnum, *ptr;
+		char *codecnum;
 		int index = 0, codec = 0;
 		
-		codecnum = strchr(colname, '[');
-		*codecnum = '\0';
-		codecnum++;
-		if ((ptr = strchr(codecnum, ']')))
-			*ptr = '\0';
-
+		codecnum = colname + 6;	/* move past the '[' */
+		codecnum = strsep(&codecnum, "]"); /* trim trailing ']' if any */
 		index = atoi(codecnum);
 		if((codec = ast_codec_pref_index(&peer->prefs, index))) {
 			ast_copy_string(buf, ast_getformatname(codec), len);
@@ -11626,9 +11626,28 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 		*/
 		
 		/* Skip leading whitespace */
-		while(replace_id[0] && (replace_id[0] < 33))
-			memmove(replace_id, replace_id+1, strlen(replace_id));
+		replace_id = ast_skip_blanks(replace_id);
 
+		/* XXX there are several bugs in the code below,
+		 * because 'ptr' can be NULL so all the dereferences in strcasestr()
+		 * would cause panics.
+		 * I think we should do something like the code below, which also has
+		 * the advantage of not depending on the order of headers.
+		 * Please test if it works, and in case remove the block in #else / #endif
+		 */
+#if 1	/* proposed replacement */
+
+		start = replace_id;
+		while ( (ptr = strsep(&start, ";")) ) {
+			ptr = ast_skip_blanks(ptr); /* XXX maybe unnecessary ? */
+			if ( (to = strcasestr(ptr, "to-tag=") ) )
+				totag = to + 7;	/* skip the keyword */
+			else if ( (to = strcasestr(ptr, "from-tag=") ) ) {
+				fromtag = to + 9;	/* skip the keyword */
+				fromtag = strsep(&fromtag, "&"); /* trim what ? */
+			}
+		}
+#else	/* original code, buggy */
 		if ((ptr = strchr(replace_id, ';'))) {
 			*ptr = '\0';
 			ptr++;
@@ -11641,6 +11660,7 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 			totag = ptr;
 			if ((to = strchr(ptr, ';')))
 				*to = '\0';
+			/* XXX this code is also wrong as to can be NULL */
 			to++;
 			ptr = to;
 		}
@@ -11654,6 +11674,7 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 			if ((to = strchr(ptr, ';')))
 				*to = '\0';
 		}
+#endif
 
 		if (sipdebug && option_debug > 3) 
 			ast_log(LOG_DEBUG,"Invite/replaces: Will use Replace-Call-ID : %s Fromtag: %s Totag: %s\n", replace_id, fromtag ? fromtag : "<no from tag>", totag ? totag : "<no to tag>");
