@@ -805,7 +805,8 @@ static struct sip_pvt {
 	int jointcapability;			/*!< Supported capability at both ends (codecs ) */
 	int peercapability;			/*!< Supported peer capability */
 	int prefcodec;				/*!< Preferred codec (outbound only) */
-	int noncodeccapability;
+	int noncodeccapability;			/*!< DTMF RFC2833 telephony-event */
+	int redircodecs;			/*!< Redirect codecs */
 	int maxcallbitrate;			/*!< Maximum Call Bitrate for Video Calls */	
 	int callingpres;			/*!< Calling presentation */
 	int authtries;				/*!< Times we've tried to authenticate */
@@ -817,7 +818,6 @@ static struct sip_pvt {
 	struct sockaddr_in sa;			/*!< Our peer */
 	struct sockaddr_in redirip;		/*!< Where our RTP should be going if not to us */
 	struct sockaddr_in vredirip;		/*!< Where our Video RTP should be going if not to us */
-	int redircodecs;			/*!< Redirect codecs */
 	struct sockaddr_in recv;		/*!< Received as */
 	struct in_addr ourip;			/*!< Our IP */
 	struct ast_channel *owner;		/*!< Who owns us */
@@ -7329,12 +7329,8 @@ static int get_refer_info(struct sip_pvt *transferer, struct sip_request *outgoi
 			ast_uri_decode(referdata->replaces_callid);
 			if ((ptr = strchr(referdata->replaces_callid, ';'))) 	/* Remove options */ {
 				*ptr = '\0';
+				ptr++;
 			}
-			/*
-			 * XXX don't know what was the intention but this code is
-			 * definitely wrong, as ptr can be NULL here.
-			 */
-			ptr++;
 
 			/* Find the different tags before we destroy the string */
 			to = strcasestr(ptr, "to-tag=");
