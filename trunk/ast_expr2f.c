@@ -1354,6 +1354,10 @@ static yyconst yy_state_type yy_NUL_trans[54] =
  * \brief Dialplan Expression Lexical Scanner
  */
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>

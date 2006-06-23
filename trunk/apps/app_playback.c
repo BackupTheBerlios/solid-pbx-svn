@@ -43,7 +43,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/utils.h"
 #include "asterisk/options.h"
 #include "asterisk/app.h"
-
 #include "asterisk/cli.h"
 #include "asterisk/localtime.h"
 #include "asterisk/say.h"

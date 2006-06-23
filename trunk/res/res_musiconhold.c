@@ -29,6 +29,10 @@
 	<conflict>win32</conflict>
  ***/
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>

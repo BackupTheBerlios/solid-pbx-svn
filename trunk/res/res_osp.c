@@ -30,6 +30,10 @@
 	<depend>ssl</depend>
  ***/
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <sys/types.h>
 #include <osp/osp.h>
 #include <osp/osputils.h>

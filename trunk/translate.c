@@ -23,6 +23,11 @@
  * \author Mark Spencer <markster@digium.com> 
  */
 
+#define MOD_LOADER	/* not really a module */
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>

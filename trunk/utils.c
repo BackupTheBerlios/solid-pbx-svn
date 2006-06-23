@@ -23,6 +23,10 @@
  * Please consult the CODING GUIDELINES for more information.
  */
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
@@ -46,7 +50,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/md5.h"
 #include "asterisk/sha1.h"
 #include "asterisk/options.h"
-#include "asterisk/compat.h"
 
 #define AST_API_MODULE		/* ensure that inlinable API functions will be built in this module if required */
 #include "asterisk/strings.h"

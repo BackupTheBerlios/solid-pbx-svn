@@ -52,7 +52,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/utils.h"
 #include "asterisk/options.h"
 
-
 static const char *app = "ExternalIVR";
 
 static const char *synopsis = "Interfaces with an external IVR application";

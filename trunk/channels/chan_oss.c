@@ -36,9 +36,13 @@
 	<depend>ossaudio</depend>
  ***/
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <stdio.h>
-#include <ctype.h>	/* for isalnum */
-#include <math.h>	/* exp and log */
+#include <ctype.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -46,7 +50,6 @@
 #include <sys/time.h>
 #include <stdlib.h>
 #include <errno.h>
-
 
 #ifdef __linux
 #include <linux/soundcard.h>

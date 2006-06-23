@@ -22,6 +22,10 @@
  * \author Matthew A. Nicholson <mnicholson@digium.com>
  */
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>

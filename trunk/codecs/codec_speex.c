@@ -31,6 +31,10 @@
 	<depend>libspeex</depend>
  ***/
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,6 +48,19 @@
 #ifdef _SPEEX_TYPES_H
 #include <speex/speex_preprocess.h>
 #endif
+
+#include "asterisk/lock.h"
+#include "asterisk/translate.h"
+#include "asterisk/module.h"
+#include "asterisk/config.h"
+#include "asterisk/options.h"
+#include "asterisk/logger.h"
+#include "asterisk/channel.h"
+#include "asterisk/utils.h"
+
+/* Sample frame data */
+#include "slin_speex_ex.h"
+#include "speex_slin_ex.h"
 
 /* codec variables */
 static int quality = 3;

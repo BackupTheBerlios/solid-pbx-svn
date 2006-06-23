@@ -23,6 +23,10 @@
  * \author Mark Spencer <markster@digium.com> 
  */
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/signal.h>
@@ -47,9 +51,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/utils.h"
 #include "asterisk/app.h"
 #include "asterisk/lock.h"
-/* For rl_filename_completion */
 #include "editline/readline/readline.h"
-/* For module directory */
 
 extern unsigned long global_fin, global_fout;
 	

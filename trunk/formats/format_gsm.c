@@ -23,6 +23,10 @@
  * \ingroup formats
  */
  
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>

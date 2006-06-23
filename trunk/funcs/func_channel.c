@@ -38,6 +38,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
 #include "asterisk/app.h"
 #include "asterisk/indications.h"
 #include "asterisk/stringfields.h"
+
 #define locked_copy_string(chan, dest, source, len) \
 	do { \
 		ast_channel_lock(chan); \

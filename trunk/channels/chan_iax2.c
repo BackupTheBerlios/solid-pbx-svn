@@ -28,6 +28,10 @@
  * \ingroup channel_drivers
  */
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -49,8 +53,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <regex.h>
-
-#include "asterisk.h"
 
 #ifdef HAVE_ZAPTEL
 #include <sys/ioctl.h>

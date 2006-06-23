@@ -31,6 +31,10 @@
 	<depend>asound</depend>
  ***/
 
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>

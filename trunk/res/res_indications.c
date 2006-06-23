@@ -24,6 +24,10 @@
  * Load the country specific dialtones into the asterisk PBX.
  */
  
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>

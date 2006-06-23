@@ -22,13 +22,17 @@
  * 
  * *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** 
  *
- * Use at your own risk. Please consult the GNU GPL license document included with Asterisk details. *
+ * Use at your own risk. Please consult the GNU GPL license document included with Asterisk.         *
  *
  * *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***
  *
  * \ingroup applications
  */ 
  
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
