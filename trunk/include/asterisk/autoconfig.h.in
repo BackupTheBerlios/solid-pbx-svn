@@ -1,4 +1,4 @@
-/* include/autoconfig.h.in.  Generated from configure.ac by autoheader.  */
+/* include/asterisk/autoconfig.h.in.  Generated from configure.ac by autoheader.  */
 
 #ifndef ASTERISK_AUTOCONFIG_H
 #define ASTERISK_AUTOCONFIG_H
@@ -135,6 +135,9 @@
 
 /* Define to indicate the ISDN PRI library */
 #undef HAVE_LIBPRI
+
+/* Define if your system has the pwlib libraries. */
+#undef HAVE_LIBPWLIB
 
 /* Define if your system has the Qt library */
 #undef HAVE_LIBQT
