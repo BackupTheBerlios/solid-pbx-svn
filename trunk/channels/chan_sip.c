@@ -1112,7 +1112,6 @@ static int auto_congest(void *nothing);
 static int update_call_counter(struct sip_pvt *fup, int event);
 static int hangup_sip2cause(int cause);
 static const char *hangup_cause2sip(int cause);
-static int sip_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 static struct sip_pvt *find_call(struct sip_request *req, struct sockaddr_in *sin, const int intended_method);
 int local_attended_transfer(struct sip_pvt *transferer, struct sip_dual *current, struct sip_request *req, int seqno);
 
@@ -1701,7 +1700,7 @@ static int __sip_autodestruct(void *data)
 
 	if (option_debug)
 		ast_log(LOG_DEBUG, "Auto destroying call '%s'\n", p->callid);
-	append_history(p, "AutoDestroy", "");
+	append_history(p, "AutoDestroy", "%s", p->callid);
 	if (p->owner) {
 		ast_log(LOG_WARNING, "Autodestruct on dialog '%s' with owner in place (Method: %s)\n", p->callid, sip_methods[p->method].text);
 		ast_queue_hangup(p->owner);
@@ -2880,8 +2879,6 @@ static int sip_hangup(struct ast_channel *ast)
 		ast_log(LOG_DEBUG, "Asked to hangup channel that was not connected\n");
 		return 0;
 	}
-	if (option_debug && sipdebug)
-		ast_log(LOG_DEBUG, "Hangup call %s, SIP callid %s)\n", ast->name, p->callid);
 
 	if (ast_test_flag(&p->flags[0], SIP_DEFER_BYE_ON_TRANSFER)) {
 		if (option_debug >3)
@@ -3089,8 +3086,16 @@ static int sip_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 	int ret = -1;
 	struct sip_pvt *p;
 
+	if (newchan && ast_test_flag(newchan, AST_FLAG_ZOMBIE))
+		ast_log(LOG_DEBUG, "New channel is zombie\n");
+	if (oldchan && ast_test_flag(oldchan, AST_FLAG_ZOMBIE))
+		ast_log(LOG_DEBUG, "Old channel is zombie\n");
+
 	if (!newchan || !newchan->tech_pvt) {
-		ast_log(LOG_WARNING, "No SIP tech_pvt! Fixup of %s failed.\n", oldchan->name);
+		if (!newchan)
+			ast_log(LOG_WARNING, "No new channel! Fixup of %s failed.\n", oldchan->name);
+		else
+			ast_log(LOG_WARNING, "No SIP tech_pvt! Fixup of %s failed.\n", oldchan->name);
 		return -1;
 	}
 	p = newchan->tech_pvt;
@@ -11893,6 +11898,7 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 			copy_request(&p->initreq, req);
 			if (debug)
 				ast_verbose("Using INVITE request as basis request - %s\n", p->callid);
+			append_history(p, "Invite", "New call: %s", p->callid);
 			parse_ok_contact(p, req);
 		} else {	/* Re-invite on existing call */
 			/* Handle SDP here if we already have an owner */
@@ -12442,7 +12448,7 @@ static int handle_request_refer(struct sip_pvt *p, struct sip_request *req, int 
 		return -1;
 	}
 
-	if (sipdebug && option_debug > 3)
+	if (current.chan2 && sipdebug && option_debug > 3)
 		ast_log(LOG_DEBUG, "Got SIP transfer, applying to bridged peer '%s'\n", current.chan2->name);
 
 	/* Stop music on hold on this channel */
@@ -13237,7 +13243,7 @@ retrylock:
 		/* becaues this is deadlock-prone, we need to try and unlock if failed */
 		if (p->owner && ast_channel_trylock(p->owner)) {
 			if (option_debug)
-				ast_log(LOG_DEBUG, "Failed to grab lock, trying again...\n");
+				ast_log(LOG_DEBUG, "Failed to grab owner channel lock, trying again. (SIP call %s)\n", p->callid);
 			ast_mutex_unlock(&p->lock);
 			ast_mutex_unlock(&netlock);
 			/* Sleep for a very short amount of time */
@@ -13245,15 +13251,19 @@ retrylock:
 			if (--lockretry)
 				goto retrylock;
 		}
-		if (!lockretry) {
-			ast_log(LOG_ERROR, "We could NOT get the channel lock for %s! \n", p->owner->name);
-			ast_log(LOG_ERROR, "SIP MESSAGE JUST IGNORED: %s \n", req.data);
-			ast_log(LOG_ERROR, "BAD! BAD! BAD!\n");
-			return 1;
-		}
 		p->recv = sin;
+
 		if (recordhistory) /* This is a request or response, note what it was for */
 			append_history(p, "Rx", "%s / %s / %s", req.data, get_header(&req, "CSeq"), req.rlPart2);
+
+		if (!lockretry) {
+			ast_log(LOG_ERROR, "We could NOT get the channel lock for %s! \n", p->owner->name ? p->owner->name : "- no channel name ??? - ");
+			ast_log(LOG_ERROR, "SIP transaction failed: %s \n", p->callid);
+			transmit_response(p, "503 Server error", &req);	/* We must respond according to RFC 3261 sec 12.2 */
+					/* XXX We could add retry-after to make sure they come back */
+			append_history(p, "LockFail", "Owner lock failed, transaction failed.");
+			return 1;
+		}
 		nounlock = 0;
 		if (handle_request(p, &req, &sin, &recount, &nounlock) == -1) {
 			/* Request failed */
