@@ -36,6 +36,7 @@
  *  \arg \ref AstCDR
  *  \arg \ref AstREADME
  *  \arg \ref AstVar
+ *  \arg \ref AstVideo
  *  \arg \ref AstENUM : The IETF way to redirect from phone numbers to VoIP calls
  *  \arg \ref AstHTTP
  *  \arg \ref AstSpeech
@@ -129,9 +130,14 @@ DUNDi is not itself a Voice-over IP signaling or media protocol. Instead, it pub
  *  \verbinclude CREDITS
  */
 
+/*! \page AstVideo Video support in Asterisk
+ * \section sectAstVideo Video support in Asterisk
+ *  \verbinclude video.txt
+ */
+
 /*! \page AstVar Global channel variables
  * \section globchan Global Channel Variables
- *  \verbinclude variables.txt
+ *  \verbinclude channelvariables.txt
  */
 
 /*! \page AstENUM ENUM
@@ -164,6 +170,7 @@ DUNDi is not itself a Voice-over IP signaling or media protocol. Instead, it pub
  * \arg \link Config_mm Meetme (conference bridge) configuration  \endlink
  * \arg \link Config_qu Queue system configuration  \endlink
  * \arg \link Config_vm Voicemail configuration  \endlink
+ * \arg \link Config_followme Followme configuration  \endlink
  * \section cdrconf CDR configuration files
  * \arg \link Config_cdr CDR configuration  \endlink
  * \arg \link cdr_custom Custom CDR driver configuration \endlink
@@ -200,6 +207,12 @@ DUNDi is not itself a Voice-over IP signaling or media protocol. Instead, it pub
  * \arg \ref res_features.c : Call feature implementation
  * \section featconf features.conf
  * \verbinclude features.conf.sample
+ */
+
+/*! \page Config_followme followme.conf 
+ * \section followmeconf Followme.conf
+ * - See app_followme.c
+ * \verbinclude followme.conf.sample
  */
 
 /*! \page Config_ext Extensions.conf - the Dial Plan
