@@ -756,7 +756,7 @@ static int moh_scan_files(struct mohclass *class) {
 
 	DIR *files_DIR;
 	struct dirent *files_dirent;
-	char path[512];
+	char path[PATH_MAX];
 	char filepath[PATH_MAX];
 	char *ext;
 	struct stat statbuf;
@@ -774,7 +774,7 @@ static int moh_scan_files(struct mohclass *class) {
 
 	class->total_files = 0;
 	dirnamelen = strlen(class->dir) + 2;
-	getcwd(path, 512);
+	getcwd(path, sizeof(path));
 	chdir(class->dir);
 	while ((files_dirent = readdir(files_DIR))) {
 		/* The file name must be at least long enough to have the file type extension */
