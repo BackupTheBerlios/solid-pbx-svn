@@ -2970,16 +2970,26 @@ static int sip_hangup(struct ast_channel *ast)
 			}
 		} else {	/* Call is in UP state, send BYE */
 			if (!p->pendinginvite) {
+				char *audioqos = "";
+				char *videoqos = "";
+				if (p->rtp)
+					audioqos = ast_rtp_get_quality(p->rtp);
+				if (p->vrtp)
+					videoqos = ast_rtp_get_quality(p->vrtp);
 				/* Send a hangup */
 				transmit_request_with_auth(p, SIP_BYE, 0, XMIT_RELIABLE, 1);
 
 				/* Get RTCP quality before end of call */
 				if (recordhistory) {
 					if (p->rtp)
-						append_history(p, "RTCPaudio", "Quality:%s", ast_rtp_get_quality(p->rtp));
+						append_history(p, "RTCPaudio", "Quality:%s", audioqos);
 					if (p->vrtp)
-						append_history(p, "RTCPvideo", "Quality:%s", ast_rtp_get_quality(p->vrtp));
+						append_history(p, "RTCPvideo", "Quality:%s", videoqos);
 				}
+				if (p->rtp)
+					pbx_builtin_setvar_helper(p->owner, "RTPAUDIOQOS", audioqos);
+				if (p->vrtp)
+					pbx_builtin_setvar_helper(p->owner, "RTPVIDEOQOS", videoqos);
 			} else {
 				/* Note we will need a BYE when this all settles out
 				   but we can't send one while we have "INVITE" outstanding. */
@@ -7319,10 +7329,11 @@ static int get_destination(struct sip_pvt *p, struct sip_request *oreq)
 	/* Find the request URI */
 	if (req->rlPart2)
 		ast_copy_string(tmp, req->rlPart2, sizeof(tmp));
-	uri = get_in_brackets(tmp);
 	
 	if (pedanticsipchecking)
 		ast_uri_decode(tmp);
+
+	uri = get_in_brackets(tmp);
 
 	if (strncmp(uri, "sip:", 4)) {
 		ast_log(LOG_WARNING, "Huh?  Not a SIP header (%s)?\n", uri);
@@ -12633,6 +12644,7 @@ static int handle_request_bye(struct sip_pvt *p, struct sip_request *req)
 	int res;
 	struct ast_channel *bridged_to;
 	char iabuf[INET_ADDRSTRLEN];
+	char *audioqos = NULL, *videoqos = NULL;
 	
 	if (p->pendinginvite && !ast_test_flag(&p->flags[0], SIP_OUTGOING) && !ast_test_flag(req, SIP_PKT_IGNORE))
 		transmit_response_reliable(p, "487 Request Terminated", &p->initreq);
@@ -12641,18 +12653,28 @@ static int handle_request_bye(struct sip_pvt *p, struct sip_request *req)
 	check_via(p, req);
 	ast_set_flag(&p->flags[0], SIP_ALREADYGONE);	
 
+	if (p->rtp)
+		audioqos = ast_rtp_get_quality(p->rtp);
+	if (p->vrtp)
+		videoqos = ast_rtp_get_quality(p->vrtp);
+
 	/* Get RTCP quality before end of call */
 	if (recordhistory) {
 		if (p->rtp)
-			append_history(p, "RTCPaudio", "Quality:%s", ast_rtp_get_quality(p->rtp));
+			append_history(p, "RTCPaudio", "Quality:%s", audioqos);
 		if (p->vrtp)
-			append_history(p, "RTCPvideo", "Quality:%s", ast_rtp_get_quality(p->vrtp));
+			append_history(p, "RTCPvideo", "Quality:%s", videoqos);
 	}
+
 	if (p->rtp) {
+		if (p->owner)
+			pbx_builtin_setvar_helper(p->owner, "RTPAUDIOQOS", audioqos);
 		/* Immediately stop RTP */
 		ast_rtp_stop(p->rtp);
 	}
 	if (p->vrtp) {
+		if (p->owner)
+			pbx_builtin_setvar_helper(p->owner, "RTPVIDEOQOS", videoqos);
 		/* Immediately stop VRTP */
 		ast_rtp_stop(p->vrtp);
 	}
