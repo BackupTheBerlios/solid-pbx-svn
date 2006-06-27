@@ -2238,7 +2238,7 @@ static void update_jbsched(struct chan_iax2_pvt *pvt)
 static void __get_from_jb(void *p) 
 {
 	int callno = PTR_TO_CALLNO(p);
-	struct chan_iax2_pvt *pvt = iaxs[callno];
+	struct chan_iax2_pvt *pvt = NULL;
 	struct iax_frame *fr;
 	jb_frame frame;
 	int ret;
@@ -5817,11 +5817,9 @@ static int auth_fail(int callno, int failcode)
 	if (iaxs[callno]) {
 		iaxs[callno]->authfail = failcode;
 		if (delayreject) {
-			ast_mutex_lock(&iaxsl[callno]);
 			if (iaxs[callno]->authid > -1)
 				ast_sched_del(sched, iaxs[callno]->authid);
 			iaxs[callno]->authid = ast_sched_add(sched, 1000, auth_reject, (void *)(long)callno);
-			ast_mutex_unlock(&iaxsl[callno]);
 		} else
 			auth_reject((void *)(long)callno);
 	}
