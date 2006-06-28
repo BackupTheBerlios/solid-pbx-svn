@@ -272,6 +272,7 @@ ASTCFLAGS+=$(MALLOC_DEBUG)$(BUSYDETECT)$(OPTIONS)
 MOD_SUBDIRS=res channels pbx apps codecs formats cdr funcs
 OTHER_SUBDIRS=utils agi
 SUBDIRS:=$(MOD_SUBDIRS) $(OTHER_SUBDIRS)
+SUBDIRS_INSTALL:=$(SUBDIRS:%=%-install)
 
 OBJS=io.o sched.o logger.o frame.o loader.o config.o channel.o \
 	translate.o file.o pbx.o cli.o md5.o term.o \
@@ -368,7 +369,7 @@ _all: all
 	@echo " +               make install                +"  
 	@echo " +-------------------------------------------+"  
 
-all: cleantest config.status menuselect.makeopts depend asterisk subdirs
+all: cleantest config.status menuselect.makeopts depend asterisk $(SUBDIRS)
 
 config.status: configure
 	@CFLAGS="" ./configure
@@ -480,10 +481,11 @@ asterisk: include/asterisk/buildopts.h editline/libedit.a db1-ast/libdb1.a $(OBJ
 muted: muted.o
 	$(CC) $(AUDIO_LIBS) -o muted muted.o
 
-subdirs: 
-	@for x in $(MOD_SUBDIRS); do CFLAGS="$(MOD_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C $$x || exit 1 ; done
-	@CFLAGS="$(OTHER_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C utils
-	@CFLAGS="$(OTHER_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C agi
+$(MOD_SUBDIRS): FORCE
+	@CFLAGS="$(MOD_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C $@
+
+$(OTHER_SUBDIRS): FORCE 
+	@CFLAGS="$(OTHER_SUBDIR_CFLAGS)$(ASTCFLAGS)" $(MAKE) -C $@
 
 clean-depend:
 	@for x in $(SUBDIRS); do $(MAKE) -C $$x clean-depend || exit 1 ; done
@@ -586,8 +588,8 @@ bininstall: all
 	$(INSTALL) -m 644 contrib/scripts/safe_asterisk.8 $(DESTDIR)$(ASTMANDIR)/man8
 	$(INSTALL) -m 644 contrib/firmware/iax/iaxy.bin $(DESTDIR)$(ASTDATADIR)/firmware/iax/iaxy.bin; \
 
-install-subdirs:
-	@for x in $(SUBDIRS); do $(MAKE) -C $$x install || exit 1 ; done
+$(SUBDIRS_INSTALL):
+	@$(MAKE) -C $(@:-install=) install
 
 NEWMODS=$(notdir $(wildcard */*.so))
 OLDMODS=$(filter-out $(NEWMODS),$(notdir $(wildcard $(DESTDIR)$(MODULES_DIR)/*.so)))
@@ -610,7 +612,7 @@ oldmodcheck:
 		echo " WARNING WARNING WARNING" ;\
 	fi
 
-install: all datafiles bininstall install-subdirs
+install: all datafiles bininstall $(SUBDIRS_INSTALL)
 	@if [ -x /usr/sbin/asterisk-post-install ]; then \
 		/usr/sbin/asterisk-post-install $(DESTDIR) . ; \
 	fi
