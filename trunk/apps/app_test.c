@@ -105,6 +105,7 @@ static int measurenoise(struct ast_channel *chan, int ms, char *who)
 				samples++;
 			}
 		}
+		ast_frfree(f);
 	}
 
 	if (rformat) {
