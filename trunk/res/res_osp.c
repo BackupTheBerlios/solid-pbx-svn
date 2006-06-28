@@ -182,7 +182,6 @@ static int osp_buildProvider(
 
 	p = ast_calloc(1, sizeof(*p));
 	if (!p) {
-		ast_log(LOG_ERROR, "Out of memory\n");
 		return(-1);
 	}
 
