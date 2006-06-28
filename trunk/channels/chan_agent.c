@@ -2614,7 +2614,7 @@ static int unload_module(void *mod)
 	}
 	AST_LIST_UNLOCK(&agents);
 	AST_LIST_HEAD_DESTROY(&agents);
-
+	ast_channel_unregister(&agent_tech);
 	return 0;
 }
 
