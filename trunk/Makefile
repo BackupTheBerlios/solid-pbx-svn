@@ -513,6 +513,7 @@ dist-clean: clean
 	@$(MAKE) -C sounds dist-clean
 	rm -f menuselect.makeopts makeopts makeopts.xml
 	rm -f config.log config.status
+	rm -rf autom4te.cache
 	rm -f include/autoconfig.h
 	rm -f include/asterisk/buildopts.h
 
@@ -887,4 +888,4 @@ release:
 	cp -ar . ../solid-pbx-$(ASTERISKVERSION)
 	cd ../solid-pbx-$(ASTERISKVERSION) && rm -rf `ls -Rd .svn */.svn */*/.svn */*/*/.svn */*/*/*/.svn` sounds
 
-.PHONY: sounds clean clean-depend dist-clean all _all depend cleantest uninstall _uninstall uninstall-all dont-optimize valgrind $(SUBDIRS_INSTALL) $(SUBDIRS_CLEAN) $(SUBDIRS_CLEAN_DEPEND) $(SUBDIRS_DEPEND) $(SUBDIRS_UNINSTALL) $(SUBDIRS)
+.PHONY: sounds clean clean-depend dist-clean distclean all _all depend cleantest uninstall _uninstall uninstall-all dont-optimize valgrind $(SUBDIRS_INSTALL) $(SUBDIRS_CLEAN) $(SUBDIRS_CLEAN_DEPEND) $(SUBDIRS_DEPEND) $(SUBDIRS_UNINSTALL) $(SUBDIRS)
