@@ -13,7 +13,7 @@
 
 .EXPORT_ALL_VARIABLES:
 
-.PHONY: sounds
+.PHONY: sounds clean clean-depend dist-clean
 
 # Create OPTIONS variable
 OPTIONS=
