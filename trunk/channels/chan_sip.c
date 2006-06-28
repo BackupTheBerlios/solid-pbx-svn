@@ -4510,7 +4510,6 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	while ((m = get_sdp_iterate(&iterator, req, "m"))[0] != '\0') {
 		int x;
 		int audio = FALSE;
-		numberofmediastreams++;
 
 		if (p->vrtp)
 			ast_rtp_pt_clear(newvideortp);  /* Must be cleared in case no m=video line exists */
@@ -4518,6 +4517,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 		if ((sscanf(m, "audio %d/%d RTP/AVP %n", &x, &numberofports, &len) == 2) ||
 		    (sscanf(m, "audio %d RTP/AVP %n", &x, &len) == 1)) {
 			audio = TRUE;
+			numberofmediastreams++;
 			/* Found audio stream in this media definition */
 			portno = x;
 			/* Scan through the RTP payload types specified in a "m=" line: */
@@ -4535,6 +4535,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 		    (sscanf(m, "video %d RTP/AVP %n", &x, &len) == 1)) {
 			/* If it is not audio - is it video ? */
 			ast_clear_flag(&p->flags[0], SIP_NOVIDEO);	
+			numberofmediastreams++;
 			vportno = x;
 			/* Scan through the RTP payload types specified in a "m=" line: */
 			for (codecs = m + len; !ast_strlen_zero(codecs); codecs = ast_skip_blanks(codecs + len)) {
@@ -4550,6 +4551,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 			if (debug)
 				ast_verbose("Got T.38 offer in SDP in dialog %s\n", p->callid);
 			udptlportno = x;
+			numberofmediastreams++;
 			
 			if (p->owner && p->lastinvite) {
 				p->t38.state = T38_PEER_REINVITE; /* T38 Offered in re-invite from remote party */
@@ -4588,7 +4590,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 		return -2;
 
 	if (numberofmediastreams > 2)
-		/* We have too many media streams, fail this offer */
+		/* We have too many fax, audio and/or video media streams, fail this offer */
 		return -3;
 
 	/* RTP addresses and ports for audio and video */
@@ -4635,23 +4637,19 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	iterator = req->sdp_start;
 	while ((a = get_sdp_iterate(&iterator, req, "a"))[0] != '\0') {
 		char* mimeSubtype = ast_strdupa(a); /* ensures we have enough space */
-		if (!strcasecmp(a, "sendonly")) {
-			sendonly = 1;
-			continue;
-		}  else if (!strcasecmp(a, "sendrecv")) {
-			sendonly = 0;
-			continue;
-		} else if (option_debug) {
+		if (option_debug > 1) {
+			int breakout = FALSE;
+		
 			/* If we're debugging, check for unsupported sdp options */
 			if (!strcasecmp(a, "inactive")) {
 				/* Inactive media streams: Not supported */
 				if (debug)
 					ast_verbose("Got unsupported a:inactive in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "rtcp:", (size_t) 5)) {
 				if (debug)
 					ast_verbose("Got unsupported a:rtcp in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "fmtp:", (size_t) 5)) {
 				/* Format parameters:  Not supported */
 				/* Note: This is used for codec parameters, like bitrate for
@@ -4659,27 +4657,36 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 					See RFC2327 for an example */
 				if (debug)
 					ast_verbose("Got unsupported a:fmtp in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "framerate:", (size_t) 10)) {
 				/* Video stuff:  Not supported */
 				if (debug)
 					ast_verbose("Got unsupported a:framerate in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "maxprate:", (size_t) 9)) {
 				/* Video stuff:  Not supported */
 				if (debug)
 					ast_verbose("Got unsupported a:maxprate in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "crypto:", (size_t) 7)) {
 				/* SRTP stuff, not yet supported */
 				if (debug)
 					ast_verbose("Got unsupported a:crypto in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			} else if (!strncasecmp(a, "ptime:", (size_t) 6)) {
 				if (debug)
 					ast_verbose("Got unsupported a:ptime in SDP offer \n");
-				continue;
+				breakout = TRUE;
 			}
+			if (breakout)	/* We have a match, skip to next header */
+				continue;
+		}
+		if (!strcasecmp(a, "sendonly")) {
+			sendonly = 1;
+			continue;
+		}  else if (!strcasecmp(a, "sendrecv")) {
+			sendonly = 0;
+			continue;
 		} else if (sscanf(a, "rtpmap: %u %[^/]/", &codec, mimeSubtype) != 2) 
 			continue;
 		/* We have a rtpmap to handle */
