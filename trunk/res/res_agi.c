@@ -1007,7 +1007,6 @@ static int handle_recordfile(struct ast_channel *chan, AGI *agi, int argc, char 
                                         }
                                         if (totalsilence > silence) {
                                              /* Ended happily with silence */
-                                        	ast_frfree(f);
                                                 gotsilence = 1;
                                                 break;
                                         }
