@@ -4811,7 +4811,7 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 				p->t38.jointcapability);
 	} else {
 		p->t38.state = T38_DISABLED;
-		if (option_debug > 1)
+		if (option_debug > 2)
 			ast_log(LOG_DEBUG, "T38 state changed to %d on channel %s\n", p->t38.state, p->owner ? p->owner->name : "<none>");
 	}
 
@@ -4888,6 +4888,8 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	if (!p->owner) 	/* There's no open channel owning us so we can return here. For a re-invite or so, we proceed */
 		return 0;
 
+	if (option_debug > 3)
+		ast_log(LOG_DEBUG, "We have an owner, now see if we need to change this call\n");
 
 	if (!(p->owner->nativeformats & p->jointcapability & AST_FORMAT_AUDIO_MASK)) {
 		if (debug) {
@@ -4911,7 +4913,6 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 			ast_queue_frame(p->owner, &ast_null_frame);
 		} else {
 			/* No address for RTP, we're on hold */
-			
 			ast_moh_start(bridgepeer, NULL);
 			if (sendonly)
 				ast_rtp_stop(p->rtp);
@@ -4923,7 +4924,6 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 	}
 
 	/* Manager Hold and Unhold events must be generated, if necessary */
-	/* XXX Support for sendonly/recvonly needs to be fixed !!! */
 	if (sin.sin_addr.s_addr && !sendonly) {
 		if (ast_test_flag(&p->flags[0], SIP_CALL_ONHOLD)) {
 			append_history(p, "Unhold", "%s", req->data);
@@ -4950,7 +4950,6 @@ static int process_sdp(struct sip_pvt *p, struct sip_request *req)
 		ast_set_flag(&p->flags[0], SIP_CALL_ONHOLD);
 	}
 	
-
 	return 0;
 }
 
@@ -12982,7 +12981,8 @@ static int handle_request_invite(struct sip_pvt *p, struct sip_request *req, int
 							transmit_response_with_sdp(p, "200 OK", req, XMIT_CRITICAL);
 						}
 					}
-				}
+				} else	/* No bridged peer */
+					transmit_response_with_sdp(p, "200 OK", req, XMIT_CRITICAL);
 			}
 			break;
 		default:
