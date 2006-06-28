@@ -367,6 +367,16 @@ AC_SUBST([pq_INCLUDE])
 AC_SUBST([pq_LIB])
 AC_SUBST([PBX_LIBpq])
 
+NETSNMP_LIBS=
+PBX_NETSNMP=0
+AC_PATH_TOOL([NET_SNMP_CONFIG], [net-snmp-config], No)
+if test "x${NET_SNMP_CONFIG}" != "xNo" ; then
+  NETSNMP_LIBS=`${NET_SNMP_CONFIG} --agent-libs`
+  PBX_NETSNMP=1
+fi
+AC_SUBST([NETSNMP_LIBS])
+AC_SUBST([PBX_NETSNMP])
+
 AC_CHECK_HEADER([linux/ixjuser.h], [PBX_IXJUSER=1], [PBX_IXJUSER=0], [
 				   #include <linux/version.h>
 				   #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
