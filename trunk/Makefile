@@ -559,7 +559,7 @@ bininstall: all
 	mkdir -p $(DESTDIR)$(ASTSPOOLDIR)/monitor
 	if [ -f asterisk ]; then $(INSTALL) -m 755 asterisk $(DESTDIR)$(ASTSBINDIR)/; fi
 	if [ -f asterisk.dll ]; then $(INSTALL) -m 755 asterisk.dll $(DESTDIR)$(ASTSBINDIR)/; fi
-	ln -sf asterisk $(DESTDIR)$(ASTSBINDIR)/rasterisk
+	$(LN) -sf asterisk $(DESTDIR)$(ASTSBINDIR)/rasterisk
 	$(INSTALL) -m 755 contrib/scripts/astgenkey $(DESTDIR)$(ASTSBINDIR)/
 	$(INSTALL) -m 755 contrib/scripts/autosupport $(DESTDIR)$(ASTSBINDIR)/
 	if [ ! -f $(DESTDIR)$(ASTSBINDIR)/safe_asterisk ]; then \
@@ -643,26 +643,26 @@ adsi:
 	mkdir -p $(DESTDIR)$(ASTETCDIR)
 	for x in configs/*.adsi; do \
 		if [ ! -f $(DESTDIR)$(ASTETCDIR)/$$x ]; then \
-			$(INSTALL) -m 644 $$x $(DESTDIR)$(ASTETCDIR)/`basename $$x` ; \
+			$(INSTALL) -m 644 $$x $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x` ; \
 		fi ; \
 	done
 
 samples: adsi
 	mkdir -p $(DESTDIR)$(ASTETCDIR)
 	for x in configs/*.sample; do \
-		if [ -f $(DESTDIR)$(ASTETCDIR)/`basename $$x .sample` ]; then \
+		if [ -f $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x .sample` ]; then \
 			if [ "$(OVERWRITE)" = "y" ]; then \
-				if cmp -s $(DESTDIR)$(ASTETCDIR)/`basename $$x .sample` $$x ; then \
+				if cmp -s $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x .sample` $$x ; then \
 					echo "Config file $$x is unchanged"; \
 					continue; \
 				fi ; \
-				mv -f $(DESTDIR)$(ASTETCDIR)/`basename $$x .sample` $(DESTDIR)$(ASTETCDIR)/`basename $$x .sample`.old ; \
+				mv -f $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x .sample` $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x .sample`.old ; \
 			else \
 				echo "Skipping config file $$x"; \
 				continue; \
 			fi ;\
 		fi ; \
-		$(INSTALL) -m 644 $$x $(DESTDIR)$(ASTETCDIR)/`basename $$x .sample` ;\
+		$(INSTALL) -m 644 $$x $(DESTDIR)$(ASTETCDIR)/`$(BASENAME) $$x .sample` ;\
 	done
 	if [ "$(OVERWRITE)" = "y" ] || [ ! -f $(DESTDIR)$(ASTCONFPATH) ]; then \
 		( \
@@ -781,20 +781,20 @@ depend: include/asterisk/version.h include/asterisk/buildopts.h .depend defaults
 
 .tags-depend:
 	@echo -n ".tags-depend: " > $@
-	@find . -maxdepth 1 -name \*.c -printf "\t%p \\\\\n" >> $@
-	@find . -maxdepth 1 -name \*.h -printf "\t%p \\\\\n" >> $@
-	@find $(SUBDIRS) -name \*.c -printf "\t%p \\\\\n" >> $@
-	@find $(SUBDIRS) -name \*.h -printf "\t%p \\\\\n" >> $@
-	@find include -name \*.h -printf "\t%p \\\\\n" >> $@
+	@$(FIND) . -maxdepth 1 -name \*.c -printf "\t%p \\\\\n" >> $@
+	@$(FIND) . -maxdepth 1 -name \*.h -printf "\t%p \\\\\n" >> $@
+	@$(FIND) $(SUBDIRS) -name \*.c -printf "\t%p \\\\\n" >> $@
+	@$(FIND) $(SUBDIRS) -name \*.h -printf "\t%p \\\\\n" >> $@
+	@$(FIND) include -name \*.h -printf "\t%p \\\\\n" >> $@
 	@echo >> $@
 
 .tags-sources:
 	@rm -f $@
-	@find . -maxdepth 1 -name \*.c -print >> $@
-	@find . -maxdepth 1 -name \*.h -print >> $@
-	@find $(SUBDIRS) -name \*.c -print >> $@
-	@find $(SUBDIRS) -name \*.h -print >> $@
-	@find include -name \*.h -print >> $@
+	@$(FIND) . -maxdepth 1 -name \*.c -print >> $@
+	@$(FIND) . -maxdepth 1 -name \*.h -print >> $@
+	@$(FIND) $(SUBDIRS) -name \*.c -print >> $@
+	@$(FIND) $(SUBDIRS) -name \*.h -print >> $@
+	@$(FIND) include -name \*.h -print >> $@
 
 tags: .tags-depend .tags-sources
 	ctags -L .tags-sources -o $@
