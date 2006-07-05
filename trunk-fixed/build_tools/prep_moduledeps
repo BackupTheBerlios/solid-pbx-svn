@@ -1,0 +1,69 @@
+#!/bin/sh
+
+get_description() {
+	x=${1}
+	TDESC=`cat $x | grep -e *tdesc | cut -f 2 -d '"'`
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -A 2 -e *description | grep -e '\"'  | cut -f 2 -d '"'` 
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -e MODULE_DESCRIPTION | grep -v return | cut -f 2 -d '"'`
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -e tdesc\\\[\\\] | cut -f 2 -d '"'`
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -e desc\\\[\\\] | grep -v description | cut -f 2 -d '"'`
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -e *desc | grep -v descrip | cut -f 2 -d '"'`
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -e *dtext | grep static | cut -f 2 -d '"'`
+	fi
+	if [ "$TDESC" = "" ]; then
+		TDESC=`cat $x | grep -A 2 -e *synopsis | grep -e '\"'  | cut -f 2 -d '"'` 
+	fi
+}
+
+process_dir() {
+	dir=${1}
+	prefix=${2}_
+	catsuffix=${3}
+	displayname=${4}
+
+	echo -e "\t<category name=\"MENUSELECT_${catsuffix}\" displayname=\"${displayname}\">"
+	for file in ${dir}/${prefix}*.c
+	do
+		fname=`basename ${file} .c`
+		get_description ${file}
+		desc=${TDESC}
+		echo -e "\t\t<member name=\"${fname}\" displayname=\"${desc}\" remove_on_change=\"${dir}/${fname}.o ${dir}/${fname}.so\">"
+		awk -f build_tools/get_moduleinfo ${file}
+		echo -e "\t\t</member>"
+	done
+	echo -e "\t</category>"
+
+	for file in ${dir}/${prefix}*.c
+	do
+		awk -f build_tools/get_makeopts ${file} >> .makeoptstmp
+	done
+}
+
+echo "<?xml version="1.0"?>"
+echo
+echo "<menu name=\"Asterisk Module Selection\">"
+rm -f .makeoptstmp
+process_dir apps app APPS Applications
+process_dir cdr cdr CDR "Call Detail Recording"
+process_dir channels chan CHANNELS "Channel Drivers"
+process_dir codecs codec CODECS "Codec Translators"
+process_dir formats format FORMATS "Format Interpreters"
+process_dir funcs func FUNCS "Dialplan Functions"
+process_dir pbx pbx PBX "PBX Modules"
+process_dir res res RES "Resource Modules"
+cat build_tools/cflags.xml
+cat sounds/sounds.xml
+cat .makeoptstmp
+rm -f .makeoptstmp
+echo "</menu>"

@@ -1,0 +1,133 @@
+/*
+ * Asterisk -- An open source telephony toolkit.
+ *
+ * Copyright (C) 1999 - 2005, Digium, Inc.
+ *
+ * Matt O'Gorman <mogorman@digium.com>
+ *
+ * See http://www.asterisk.org for more information about
+ * the Asterisk project. Please do not directly contact
+ * any of the maintainers of this project for assistance;
+ * the project provides a web site, mailing lists and IRC
+ * channels for your use.
+ *
+ * This program is free software, distributed under the terms of
+ * the GNU General Public License Version 2. See the LICENSE file
+ * at the top of the source tree.
+ */
+
+/*! \file
+ *
+ * \brief ReadFile application -- Reads in a File for you.
+ *
+ * \author Matt O'Gorman <mogorman@digium.com>
+ *
+ * \ingroup applications
+ */
+
+#include "asterisk.h"
+
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 32846 $")
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+#include "asterisk/file.h"
+#include "asterisk/logger.h"
+#include "asterisk/options.h"
+#include "asterisk/channel.h"
+#include "asterisk/pbx.h"
+#include "asterisk/app.h"
+#include "asterisk/module.h"
+
+static char *tdesc = "Stores output of file into a variable";
+
+static char *app_readfile = "ReadFile";
+
+static char *readfile_synopsis = "ReadFile(varname=file,length)";
+
+static char *readfile_descrip =
+"ReadFile(varname=file,length)\n"
+"  Varname - Result stored here.\n"
+"  File - The name of the file to read.\n"
+"  Length - Maximum number of characters to capture.\n";
+
+LOCAL_USER_DECL;
+
+static int readfile_exec(struct ast_channel *chan, void *data)
+{
+	int res=0;
+	struct localuser *u;
+	char *s, *varname=NULL, *file=NULL, *length=NULL, *returnvar=NULL;
+	int len=0;
+
+	if (ast_strlen_zero(data)) {
+		ast_log(LOG_WARNING, "ReadFile require an argument!\n");
+		return -1;
+	}
+
+	LOCAL_USER_ADD(u);
+
+	s = ast_strdupa(data);
+
+	varname = strsep(&s, "=");
+	file = strsep(&s, "|");
+	length = s;
+
+	if (!varname || !file) {
+		ast_log(LOG_ERROR, "No file or variable specified!\n");
+		LOCAL_USER_REMOVE(u);
+		return -1;
+	}
+
+	if (length) {
+		if ((sscanf(length, "%d", &len) != 1) || (len < 0)) {
+			ast_log(LOG_WARNING, "%s is not a positive number, defaulting length to max\n", length);
+			len = 0;
+		}
+	}
+
+	if ((returnvar = ast_read_textfile(file))) {
+		if (len > 0) {
+			if (len < strlen(returnvar))
+				returnvar[len]='\0';
+			else
+				ast_log(LOG_WARNING, "%s is longer than %d, and %d \n", file, len, (int)strlen(returnvar));
+		}
+		pbx_builtin_setvar_helper(chan, varname, returnvar);
+		free(returnvar);
+	}
+	LOCAL_USER_REMOVE(u);
+	return res;
+}
+
+
+static int unload_module(void *mod)
+{
+	int res;
+
+	res = ast_unregister_application(app_readfile);
+	
+	STANDARD_HANGUP_LOCALUSERS;
+
+	return res;	
+}
+
+static int load_module(void *mod)
+{
+	return ast_register_application(app_readfile, readfile_exec, readfile_synopsis, readfile_descrip);
+}
+
+static const char *description(void)
+{
+	return tdesc;
+}
+
+static const char *key(void)
+{
+	return ASTERISK_GPL_KEY;
+}
+
+STD_MOD1;
